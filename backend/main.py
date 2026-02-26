@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db, close_db
+from routers import auth, admin
 
 settings = get_settings()
 
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM Token Manager",
     description="大模型 Token 管理网关 — 统一管理团队的 LLM API 使用",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -52,7 +53,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "llm-token-manager",
-        "version": "0.1.0"
+        "version": "0.2.0"
     }
 
 
@@ -67,11 +68,18 @@ async def root():
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 路由注册（后续 Step 会逐步添加）
+# 路由注册
 # ─────────────────────────────────────────────────────────────────────
 
-# from routers import auth, user_keys, admin, gateway
-# app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-# app.include_router(user_keys.router, prefix="/api/user", tags=["User Keys"])
-# app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+# 认证路由（注册、登录、获取当前用户）
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+
+# 用户路由（获取当前用户信息的另一种路径）
+app.include_router(auth.router, prefix="/api/user", tags=["User"])
+
+# Admin 管理路由
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+
+# 后续 Step 会添加的路由：
+# app.include_router(user_keys.router, prefix="/api/user/keys", tags=["User Keys"])
 # app.include_router(gateway.router, prefix="/v1", tags=["Gateway"])
