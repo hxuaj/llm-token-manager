@@ -43,6 +43,9 @@ class UserListItem(BaseModel):
     role: str
     is_active: bool
     monthly_quota_usd: float
+    rpm_limit: int
+    max_keys: int
+    key_count: int = 0
     created_at: str
 
     class Config:
@@ -55,6 +58,7 @@ class UserUpdate(BaseModel):
     rpm_limit: Optional[int] = None
     max_keys: Optional[int] = None
     is_active: Optional[bool] = None
+    role: Optional[str] = None
 
 
 class UserStatusUpdate(BaseModel):
@@ -159,6 +163,9 @@ def user_to_list_item(user: User) -> UserListItem:
         role=role,
         is_active=user.is_active,
         monthly_quota_usd=float(user.monthly_quota_usd),
+        rpm_limit=user.rpm_limit,
+        max_keys=user.max_keys,
+        key_count=0,  # 暂时返回 0，实际数量在 list_users 中计算
         created_at=user.created_at.isoformat()
     )
 
@@ -218,11 +225,38 @@ async def list_users(
     db: AsyncSession = Depends(get_db)
 ):
     """获取用户列表（仅管理员）"""
+    from models.user_api_key import UserApiKey
+
     result = await db.execute(
         select(User).order_by(User.created_at.desc())
     )
     users = result.scalars().all()
-    return [user_to_list_item(u) for u in users]
+
+    # 获取每个用户的 Key 数量
+    user_list = []
+    for user in users:
+        role = user.role.value if hasattr(user.role, 'value') else user.role
+
+        # 查询用户的 Key 数量
+        key_count_result = await db.execute(
+            select(func.count()).where(UserApiKey.user_id == user.id)
+        )
+        key_count = key_count_result.scalar() or 0
+
+        user_list.append({
+            "id": str(user.id),
+            "username": user.username,
+            "email": user.email,
+            "role": role,
+            "is_active": user.is_active,
+            "monthly_quota_usd": float(user.monthly_quota_usd),
+            "rpm_limit": user.rpm_limit,
+            "max_keys": user.max_keys,
+            "key_count": key_count,
+            "created_at": user.created_at.isoformat()
+        })
+
+    return user_list
 
 
 @router.put("/users/{user_id}", response_model=UserListItem)
@@ -252,10 +286,33 @@ async def update_user(
         user.max_keys = update_data.max_keys
     if update_data.is_active is not None:
         user.is_active = update_data.is_active
+    if update_data.role is not None:
+        user.role = UserRole.ADMIN if update_data.role == "admin" else UserRole.USER
 
     await db.commit()
     await db.refresh(user)
-    return user_to_list_item(user)
+
+    # 返回更新后的用户信息
+    role = user.role.value if hasattr(user.role, 'value') else user.role
+
+    # 查询用户的 Key 数量
+    key_count_result = await db.execute(
+        select(func.count()).where(UserApiKey.user_id == user.id)
+    )
+    key_count = key_count_result.scalar() or 0
+
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "email": user.email,
+        "role": role,
+        "is_active": user.is_active,
+        "monthly_quota_usd": float(user.monthly_quota_usd),
+        "rpm_limit": user.rpm_limit,
+        "max_keys": user.max_keys,
+        "key_count": key_count,
+        "created_at": user.created_at.isoformat()
+    }
 
 
 @router.patch("/users/{user_id}/status", response_model=UserListItem)
@@ -306,6 +363,44 @@ async def delete_user(
     await db.delete(user)
     await db.commit()
     return {"message": "User deleted", "id": user_id}
+
+
+@router.get("/users/{user_id}/keys")
+async def get_user_keys(
+    user_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin 查看用户的所有 Key"""
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    # 检查用户是否存在
+    result = await db.execute(
+        select(User).where(User.id == user_uuid)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 查询用户的所有 Key
+    result = await db.execute(
+        select(UserApiKey).where(UserApiKey.user_id == user_uuid)
+        .order_by(UserApiKey.created_at.desc())
+    )
+    keys = result.scalars().all()
+
+    return [{
+        "id": str(key.id),
+        "name": key.name,
+        "key_prefix": key.key_prefix,
+        "key_suffix": key.key_suffix,
+        "status": key.status.value if hasattr(key.status, 'value') else key.status,
+        "created_at": key.created_at.isoformat(),
+        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
+    } for key in keys]
 
 
 @router.delete("/users/{user_id}/keys/{key_id}", status_code=status.HTTP_200_OK)
@@ -477,6 +572,96 @@ async def add_provider_key(
         status=api_key.status.value if hasattr(api_key.status, 'value') else api_key.status,
         created_at=api_key.created_at.isoformat()
     )
+
+
+@router.get("/providers/{provider_id}/keys")
+async def list_provider_keys(
+    provider_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取供应商的所有 API Key"""
+    try:
+        provider_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid provider ID")
+
+    result = await db.execute(
+        select(ProviderApiKey).where(ProviderApiKey.provider_id == provider_uuid)
+    )
+    keys = result.scalars().all()
+
+    return [{
+        "id": str(key.id),
+        "key_suffix": key.key_suffix,
+        "rpm_limit": key.rpm_limit,
+        "status": key.status.value if hasattr(key.status, 'value') else key.status,
+        "created_at": key.created_at.isoformat()
+    } for key in keys]
+
+
+@router.get("/providers/{provider_id}/pricing")
+async def list_provider_pricing(
+    provider_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取供应商的模型定价列表"""
+    try:
+        provider_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid provider ID")
+
+    result = await db.execute(
+        select(ModelPricing).where(ModelPricing.provider_id == provider_uuid)
+    )
+    pricings = result.scalars().all()
+
+    return [{
+        "id": str(p.id),
+        "model_name": p.model_name,
+        "input_price_per_1k": float(p.input_price_per_1k),
+        "output_price_per_1k": float(p.output_price_per_1k),
+        "created_at": p.created_at.isoformat()
+    } for p in pricings]
+
+
+@router.post("/providers/{provider_id}/pricing")
+async def add_provider_pricing(
+    provider_id: str,
+    data: ModelPricingCreate,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """添加模型定价"""
+    try:
+        provider_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid provider ID")
+
+    # 检查供应商是否存在
+    result = await db.execute(select(Provider).where(Provider.id == provider_uuid))
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    pricing = ModelPricing(
+        provider_id=provider_uuid,
+        model_name=data.model_name,
+        input_price_per_1k=Decimal(str(data.input_price_per_1k)),
+        output_price_per_1k=Decimal(str(data.output_price_per_1k))
+    )
+    db.add(pricing)
+    await db.commit()
+    await db.refresh(pricing)
+
+    return {
+        "id": str(pricing.id),
+        "model_name": pricing.model_name,
+        "input_price_per_1k": float(pricing.input_price_per_1k),
+        "output_price_per_1k": float(pricing.output_price_per_1k),
+        "created_at": pricing.created_at.isoformat()
+    }
 
 
 @router.delete("/providers/{provider_id}/keys/{key_id}", status_code=status.HTTP_200_OK)
