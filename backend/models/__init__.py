@@ -6,10 +6,14 @@ from models.user_api_key import UserApiKey, KeyStatus
 from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
 from models.model_pricing import ModelPricing
+from models.request_log import RequestLog, RequestStatus
+from models.monthly_usage import MonthlyUsage
 
 __all__ = [
     "User", "UserRole", "GUID",
     "UserApiKey", "KeyStatus",
     "Provider", "ProviderApiKey", "ProviderKeyStatus",
-    "ModelPricing"
+    "ModelPricing",
+    "RequestLog", "RequestStatus",
+    "MonthlyUsage"
 ]

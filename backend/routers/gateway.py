@@ -6,6 +6,8 @@
 - GET /v1/models: 可用模型列表
 """
 import json
+import time
+import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -17,15 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models.user import User
 from models.user_api_key import UserApiKey
+from models.request_log import RequestStatus
 from middleware.auth import get_user_by_api_key
 from services.proxy import (
     forward_request,
     forward_request_stream,
-    check_model_access,
-    get_available_models,
-    get_provider_name_by_model
+    get_provider_name_by_model,
+    get_available_models
 )
-from services.user_key_service import hash_key
+from services.quota import (
+    check_all_limits,
+    QuotaExceededError,
+    RateLimitedError
+)
+from services.billing import log_request
 
 router = APIRouter()
 
@@ -73,6 +80,11 @@ class ModelListResponse(BaseModel):
     data: List[ModelInfo]
 
 
+class QuotaExceededResponse(BaseModel):
+    """额度超限响应"""
+    error: Dict[str, Any]
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 核心代理接口
 # ─────────────────────────────────────────────────────────────────────
@@ -91,6 +103,7 @@ async def chat_completions(
     认证：使用平台 Key（Bearer Token）
     """
     user, api_key = user_key
+    start_time = time.time()
 
     # 检查模型是否可用
     provider_name = get_provider_name_by_model(request.model)
@@ -100,11 +113,32 @@ async def chat_completions(
             detail=f"Unknown model: {request.model}"
         )
 
-    # 检查模型白名单
-    if not await check_model_access(request.model, user.allowed_models):
+    # 检查所有限制（额度、RPM、模型白名单）
+    try:
+        await check_all_limits(user, request.model, db)
+    except QuotaExceededError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "type": "quota_exceeded",
+                "message": "Your monthly quota has been exceeded. Please contact admin.",
+                "quota_used": float(e.used),
+                "quota_limit": float(e.limit),
+                "resets_at": e.resets_at
+            }
+        )
+    except RateLimitedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "type": "rate_limited",
+                "message": f"Rate limit exceeded. Current: {e.rpm}, Limit: {e.limit} RPM"
+            }
+        )
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You don't have access to model: {request.model}"
+            detail=str(e)
         )
 
     # 构建请求字典
@@ -114,7 +148,9 @@ async def chat_completions(
         if request.stream:
             # 流式响应
             return StreamingResponse(
-                stream_response_generator(request.model, request_dict, db),
+                stream_response_generator(
+                    request.model, request_dict, user, api_key, db, start_time
+                ),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -124,15 +160,57 @@ async def chat_completions(
         else:
             # 非流式响应
             response = await forward_request(request.model, request_dict, db)
+
+            # 计算延迟
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # 记录请求日志
+            usage = response.get("usage", {})
+            await log_request(
+                user_id=user.id,
+                key_id=api_key.id,
+                model=request.model,
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                latency_ms=latency_ms,
+                status=RequestStatus.SUCCESS,
+                db=db
+            )
+
             return response
 
     except ValueError as e:
+        # 记录失败请求
+        latency_ms = int((time.time() - start_time) * 1000)
+        await log_request(
+            user_id=user.id,
+            key_id=api_key.id,
+            model=request.model,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=latency_ms,
+            status=RequestStatus.ERROR,
+            error_message=str(e),
+            db=db
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
-        # 记录错误但不暴露内部细节
+        # 记录失败请求
+        latency_ms = int((time.time() - start_time) * 1000)
+        await log_request(
+            user_id=user.id,
+            key_id=api_key.id,
+            model=request.model,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=latency_ms,
+            status=RequestStatus.ERROR,
+            error_message=str(e)[:500],
+            db=db
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Provider error: {str(e)[:100]}"
@@ -142,7 +220,10 @@ async def chat_completions(
 async def stream_response_generator(
     model: str,
     request: Dict[str, Any],
-    db: AsyncSession
+    user: User,
+    api_key: UserApiKey,
+    db: AsyncSession,
+    start_time: float
 ):
     """
     流式响应生成器
@@ -150,16 +231,39 @@ async def stream_response_generator(
     Args:
         model: 模型名称
         request: 请求字典
+        user: 用户对象
+        api_key: API Key 对象
         db: 数据库 session
+        start_time: 请求开始时间
 
     Yields:
         SSE 格式的数据块
     """
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    error_occurred = False
+    error_message = None
+
     try:
         async for chunk in forward_request_stream(model, request, db):
             yield chunk
+
+            # 尝试从 chunk 中解析 usage 信息
+            try:
+                if isinstance(chunk, bytes):
+                    chunk_str = chunk.decode('utf-8')
+                    if chunk_str.startswith('data: ') and not chunk_str.startswith('data: [DONE]'):
+                        data = json.loads(chunk_str[6:])
+                        usage = data.get('usage', {})
+                        if usage:
+                            total_prompt_tokens = usage.get('prompt_tokens', 0)
+                            total_completion_tokens = usage.get('completion_tokens', 0)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
     except Exception as e:
-        # 流式响应中的错误处理
+        error_occurred = True
+        error_message = str(e)
         error_chunk = {
             "error": {
                 "message": str(e),
@@ -168,6 +272,22 @@ async def stream_response_generator(
         }
         yield f"data: {json.dumps(error_chunk)}\n\n".encode()
         yield b"data: [DONE]\n\n"
+
+    finally:
+        # 计算延迟并记录日志
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        await log_request(
+            user_id=user.id,
+            key_id=api_key.id,
+            model=model,
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            latency_ms=latency_ms,
+            status=RequestStatus.ERROR if error_occurred else RequestStatus.SUCCESS,
+            error_message=error_message,
+            db=db
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────
