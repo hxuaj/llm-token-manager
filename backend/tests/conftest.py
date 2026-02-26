@@ -22,7 +22,9 @@ os.environ["ENCRYPTION_KEY"] = "test-encryption-key-32-characters!"
 
 from database import Base, get_db
 from models.user import User, UserRole
+from models.user_api_key import UserApiKey
 from services.auth import hash_password, create_access_token
+from services.user_key_service import generate_api_key
 from main import app
 
 
@@ -188,8 +190,21 @@ async def user_api_key(test_user, db_session: AsyncSession):
 
     返回 (key_object, raw_key_string) 元组
     """
-    # TODO: Step 3 实现后添加
-    return None, None
+    import uuid
+    raw_key, key_hash, key_suffix = generate_api_key()
+    key = UserApiKey(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        name="Test Key",
+        key_hash=key_hash,
+        key_prefix="ltm-sk-",
+        key_suffix=key_suffix,
+        status="active",
+    )
+    db_session.add(key)
+    await db_session.commit()
+    await db_session.refresh(key)
+    return key, raw_key
 
 
 # ─────────────────────────────────────────────────────────────────────
