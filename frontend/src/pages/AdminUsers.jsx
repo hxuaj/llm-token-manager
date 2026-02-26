@@ -3,8 +3,8 @@
  */
 import React, { useState, useEffect } from 'react'
 import {
-  Table, Button, Modal, Form, Input, InputNumber, Select, message,
-  Tag, Space, Card, Typography, Popconfirm, Descriptions, Tabs
+  Table, Button, Modal, Form, Input, InputNumber, Select, Switch, message,
+  Tag, Space, Card, Typography, Popconfirm, Descriptions
 } from 'antd'
 import {
   EditOutlined, KeyOutlined, EyeOutlined, SearchOutlined
@@ -12,7 +12,6 @@ import {
 import { adminUserApi } from '../api'
 
 const { Title } = Typography
-const { TabPane } = Tabs
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([])
@@ -264,10 +263,7 @@ export default function AdminUsers() {
             </Select>
           </Form.Item>
           <Form.Item name="is_active" label="状态" valuePropName="checked">
-            <Select>
-              <Select.Option value={true}>正常</Select.Option>
-              <Select.Option value={false}>禁用</Select.Option>
-            </Select>
+            <Switch checkedChildren="正常" unCheckedChildren="禁用" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block>
