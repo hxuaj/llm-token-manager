@@ -21,6 +21,8 @@ os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["ENCRYPTION_KEY"] = "test-encryption-key-32-characters!"
 
 from database import Base, get_db
+from models.user import User, UserRole
+from services.auth import hash_password, create_access_token
 from main import app
 
 
@@ -90,7 +92,7 @@ async def client(db_session: AsyncSession):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 用户 fixtures（后续 Step 会实现）
+# 用户 fixtures
 # ─────────────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
@@ -98,25 +100,22 @@ async def test_user(db_session: AsyncSession):
     """
     创建一个普通测试用户
 
-    返回 user 对象（Step 2 实现后完善）
+    返回 user 对象
     """
-    # TODO: Step 2 实现后添加
-    # from models.user import User
-    # from passlib.context import CryptContext
-    #
-    # pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    # user = User(
-    #     username="testuser",
-    #     email="testuser@example.com",
-    #     password_hash=pwd_context.hash("testpassword123"),
-    #     role="user",
-    #     is_active=True,
-    # )
-    # db_session.add(user)
-    # await db_session.commit()
-    # await db_session.refresh(user)
-    # return user
-    return None
+    user = User(
+        username="testuser",
+        email="testuser@example.com",
+        password_hash=hash_password("testpassword123"),
+        role=UserRole.USER,
+        is_active=True,
+        monthly_quota_usd=10.00,
+        rpm_limit=30,
+        max_keys=5,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
 
 
 @pytest_asyncio.fixture
@@ -124,32 +123,58 @@ async def test_admin(db_session: AsyncSession):
     """
     创建一个 Admin 测试用户
 
-    返回 admin user 对象（Step 2 实现后完善）
+    返回 admin user 对象
     """
-    # TODO: Step 2 实现后添加
-    return None
+    admin = User(
+        username="testadmin",
+        email="testadmin@example.com",
+        password_hash=hash_password("adminpassword123"),
+        role=UserRole.ADMIN,
+        is_active=True,
+        monthly_quota_usd=100.00,
+        rpm_limit=100,
+        max_keys=10,
+    )
+    db_session.add(admin)
+    await db_session.commit()
+    await db_session.refresh(admin)
+    return admin
 
 
 @pytest_asyncio.fixture
-async def user_token(test_user):
+async def user_token(test_user: User):
     """
     普通用户的 JWT token
 
-    返回 token 字符串（Step 2 实现后完善）
+    返回 token 字符串
     """
-    # TODO: Step 2 实现后添加
-    return None
+    role = test_user.role.value if hasattr(test_user.role, 'value') else test_user.role
+    token = create_access_token(
+        data={
+            "sub": test_user.username,
+            "user_id": str(test_user.id),
+            "role": role
+        }
+    )
+    return token
 
 
 @pytest_asyncio.fixture
-async def admin_token(test_admin):
+async def admin_token(test_admin: User):
     """
     Admin 用户的 JWT token
 
-    返回 token 字符串（Step 2 实现后完善）
+    返回 token 字符串
     """
-    # TODO: Step 2 实现后添加
-    return None
+    role = test_admin.role.value if hasattr(test_admin.role, 'value') else test_admin.role
+    token = create_access_token(
+        data={
+            "sub": test_admin.username,
+            "user_id": str(test_admin.id),
+            "role": role
+        }
+    )
+    return token
 
 
 # ─────────────────────────────────────────────────────────────────────
