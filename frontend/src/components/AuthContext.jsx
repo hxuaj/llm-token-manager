@@ -37,10 +37,17 @@ export function AuthProvider({ children }) {
 
   // 登录
   const login = async (username, password) => {
-    const response = await authApi.login({ username, password })
-    const { access_token, user: userData } = response.data
+    // 先获取 token
+    const loginResponse = await authApi.login({ username, password })
+    const { access_token } = loginResponse.data
 
+    // 保存 token
     localStorage.setItem('token', access_token)
+
+    // 然后获取用户信息
+    const meResponse = await authApi.me()
+    const userData = meResponse.data
+
     localStorage.setItem('user', JSON.stringify(userData))
     setUser(userData)
 
@@ -49,14 +56,11 @@ export function AuthProvider({ children }) {
 
   // 注册
   const register = async (username, email, password) => {
-    const response = await authApi.register({ username, email, password })
-    const { access_token, user: userData } = response.data
+    // 先注册
+    await authApi.register({ username, email, password })
 
-    localStorage.setItem('token', access_token)
-    localStorage.setItem('user', JSON.stringify(userData))
-    setUser(userData)
-
-    return userData
+    // 然后自动登录
+    return await login(username, password)
   }
 
   // 登出
