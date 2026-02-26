@@ -3,10 +3,11 @@
 
 提供：
 - JWT 认证依赖（用于 FastAPI 路由）
+- 平台 Key 认证（用于 API 网关）
 - 获取当前用户
 - Admin 权限校验
 """
-from typing import Optional
+from typing import Optional, Tuple
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,9 @@ from sqlalchemy import select
 
 from database import get_db
 from models.user import User, UserRole
+from models.user_api_key import UserApiKey, KeyStatus
 from services.auth import decode_access_token
+from services.user_key_service import hash_key, KEY_PREFIX
 
 # HTTP Bearer 认证方案
 security = HTTPBearer(auto_error=False)
@@ -100,3 +103,72 @@ async def get_current_admin_user(
             detail="Admin access required"
         )
     return current_user
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 平台 Key 认证（用于 API 网关）
+# ─────────────────────────────────────────────────────────────────────
+
+async def get_user_by_api_key(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> Tuple[User, UserApiKey]:
+    """
+    通过平台 API Key 获取用户
+
+    用于网关代理接口的认证，验证平台 Key 并返回用户和 Key 对象
+
+    Raises:
+        HTTPException: 401 如果 Key 无效、不存在或已吊销
+    """
+    auth_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid API key",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    if credentials is None:
+        raise auth_exception
+
+    api_key = credentials.credentials
+
+    # 验证 Key 格式
+    if not api_key.startswith(KEY_PREFIX):
+        raise auth_exception
+
+    # 计算哈希并查询
+    key_hash = hash_key(api_key)
+
+    result = await db.execute(
+        select(UserApiKey).where(UserApiKey.key_hash == key_hash)
+    )
+    key = result.scalar_one_or_none()
+
+    if key is None:
+        raise auth_exception
+
+    # 检查 Key 状态
+    if key.status != KeyStatus.ACTIVE.value and key.status != KeyStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 获取用户
+    result = await db.execute(
+        select(User).where(User.id == key.user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise auth_exception
+
+    # 检查用户状态
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is disabled"
+        )
+
+    return user, key

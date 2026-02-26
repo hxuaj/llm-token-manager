@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db, close_db
-from routers import auth, admin, user_keys
+from routers import auth, admin, user_keys, gateway
 
 settings = get_settings()
 
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM Token Manager",
     description="大模型 Token 管理网关 — 统一管理团队的 LLM API 使用",
-    version="0.3.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -53,7 +53,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "llm-token-manager",
-        "version": "0.3.0"
+        "version": "0.5.0"
     }
 
 
@@ -83,5 +83,5 @@ app.include_router(user_keys.router, prefix="/api/user/keys", tags=["User Keys"]
 # Admin 管理路由
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
-# 后续 Step 会添加的路由：
-# app.include_router(gateway.router, prefix="/v1", tags=["Gateway"])
+# 网关代理路由（OpenAI 兼容）
+app.include_router(gateway.router, prefix="/v1", tags=["Gateway"])
