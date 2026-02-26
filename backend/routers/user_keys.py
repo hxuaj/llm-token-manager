@@ -21,6 +21,8 @@ from models.user import User
 from models.user_api_key import UserApiKey, KeyStatus
 from middleware.auth import get_current_active_user
 from services.user_key_service import generate_api_key
+from services.billing import get_user_stats, get_key_stats as get_key_stats_from_db
+from services.quota import get_monthly_usage_for_quota
 
 router = APIRouter()
 
@@ -67,6 +69,21 @@ class KeyStats(BaseModel):
     total_requests: int
     total_tokens: int
     total_cost_usd: float
+
+    class Config:
+        from_attributes = True
+
+
+class UserUsageResponse(BaseModel):
+    """用户用量统计响应"""
+    user_id: str
+    year_month: str
+    total_requests: int
+    total_tokens: int
+    total_cost_usd: float
+    quota_used: float
+    quota_limit: float
+    rpm_limit: int
 
     class Config:
         from_attributes = True
@@ -259,10 +276,42 @@ async def get_key_stats(
 
     # TODO: Step 6 实现后，从 request_logs 表查询实际统计数据
     # 目前返回空统计
+    stats = await get_key_stats_from_db(key.id, db)
+
     return KeyStats(
         key_id=str(key.id),
         key_name=key.name,
-        total_requests=0,
-        total_tokens=0,
-        total_cost_usd=0.0
+        total_requests=stats.get("total_requests", 0),
+        total_tokens=stats.get("total_tokens", 0),
+        total_cost_usd=stats.get("total_cost_usd", 0.0)
+    )
+
+
+@router.get("/usage", response_model=UserUsageResponse)
+async def get_user_usage(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取当前用户的用量统计
+
+    - 包含本月请求数、Token 数、费用
+    - 包含额度使用情况
+    """
+    from datetime import datetime
+
+    # 获取本月用量
+    used_cost, total_tokens, request_count = await get_monthly_usage_for_quota(
+        current_user.id, db
+    )
+
+    return UserUsageResponse(
+        user_id=str(current_user.id),
+        year_month=datetime.utcnow().strftime("%Y-%m"),
+        total_requests=request_count,
+        total_tokens=total_tokens,
+        total_cost_usd=float(used_cost),
+        quota_used=float(used_cost),
+        quota_limit=float(current_user.monthly_quota_usd),
+        rpm_limit=current_user.rpm_limit
     )

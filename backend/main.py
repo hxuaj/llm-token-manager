@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db, close_db
-from routers import auth, admin, user_keys, gateway
+from routers import auth, admin, user_keys, user, gateway
 
 settings = get_settings()
 
@@ -74,8 +74,8 @@ async def root():
 # 认证路由（注册、登录、获取当前用户）
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 
-# 用户路由（获取当前用户信息的另一种路径）
-app.include_router(auth.router, prefix="/api/user", tags=["User"])
+# 用户路由（用量统计等）
+app.include_router(user.router, prefix="/api/user", tags=["User"])
 
 # 用户 Key 管理路由
 app.include_router(user_keys.router, prefix="/api/user/keys", tags=["User Keys"])
