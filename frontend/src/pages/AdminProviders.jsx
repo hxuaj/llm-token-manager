@@ -311,6 +311,7 @@ export default function AdminProviders() {
               <Select.Option value="anthropic">Anthropic</Select.Option>
               <Select.Option value="qwen">通义千问</Select.Option>
               <Select.Option value="ernie">文心一言</Select.Option>
+              <Select.Option value="zhipu">智谱 AI</Select.Option>
               <Select.Option value="openrouter">OpenRouter</Select.Option>
             </Select>
           </Form.Item>

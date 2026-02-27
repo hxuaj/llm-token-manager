@@ -21,6 +21,7 @@ from services.providers.openai_adapter import OpenAIAdapter
 from services.providers.anthropic_adapter import AnthropicAdapter
 from services.providers.qwen_adapter import QwenAdapter
 from services.providers.openrouter_adapter import OpenRouterAdapter
+from services.providers.zhipu_adapter import ZhipuAdapter
 
 
 # 模型前缀到供应商的映射
@@ -31,6 +32,7 @@ MODEL_PREFIX_TO_PROVIDER = {
     "claude-": "anthropic",
     "qwen-": "qwen",
     "ernie-": "ernie",
+    "glm-": "zhipu",
     # OpenRouter 模型格式: provider/model-name
     "openai/": "openrouter",
     "anthropic/": "openrouter",
@@ -81,6 +83,7 @@ def create_adapter(provider_name: str, base_url: str, api_key: str) -> BaseAdapt
         "anthropic": AnthropicAdapter,
         "qwen": QwenAdapter,
         "openrouter": OpenRouterAdapter,
+        "zhipu": ZhipuAdapter,
     }
 
     adapter_class = adapters.get(provider_name, OpenAIAdapter)
