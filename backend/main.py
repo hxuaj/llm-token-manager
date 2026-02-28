@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="LLM Token Manager",
     description="大模型 Token 管理网关 — 统一管理团队的 LLM API 使用",
-    version="0.8.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
@@ -53,7 +53,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "llm-token-manager",
-        "version": "0.8.0"
+        "version": "1.0.0"
     }
 
 
