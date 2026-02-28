@@ -32,7 +32,13 @@ llm-token-manager/
 │   ├── database.py              # 数据库引擎和 session
 │   ├── models/                  # SQLAlchemy 模型（每表一个文件）
 │   ├── routers/                 # API 路由（按功能模块拆分）
+│   │   ├── gateway.py           # OpenAI 格式网关 /v1/chat/completions
+│   │   └── anthropic_gateway.py # Anthropic 格式网关 /v1/messages
 │   ├── services/                # 业务逻辑（不依赖 HTTP 层）
+│   │   ├── proxy.py             # OpenAI 格式代理逻辑
+│   │   ├── anthropic_proxy.py   # Anthropic 格式透传代理逻辑
+│   │   ├── quota.py             # 额度与限流检查
+│   │   ├── billing.py           # 计量与费用计算
 │   │   └── providers/           # 各 LLM 供应商的请求/响应适配器
 │   ├── middleware/               # 认证、限流中间件
 │   ├── alembic/                 # 数据库迁移脚本
@@ -42,6 +48,7 @@ llm-token-manager/
 │   │   ├── test_user_keys.py
 │   │   ├── test_admin.py
 │   │   ├── test_gateway.py
+│   │   ├── test_anthropic_gateway.py  # Anthropic 端点测试
 │   │   ├── test_quota.py
 │   │   └── test_billing.py
 │   ├── requirements.txt
@@ -53,7 +60,8 @@ llm-token-manager/
 │   │   └── api/
 │   └── package.json
 └── docs/
-    └── PRD.md
+    ├── PRD.md
+    └── anthropic-api-setup.md   # Anthropic API 配置指南
 ```
 
 ## 核心概念
@@ -276,7 +284,8 @@ cd backend && python -m pytest --lf
 
 | 路径 | 用途 |
 |------|------|
-| `POST /v1/chat/completions` | 核心网关代理（平台 Key 鉴权） |
+| `POST /v1/chat/completions` | 核心网关代理（平台 Key 鉴权，OpenAI 格式） |
+| `POST /v1/messages` | Anthropic Messages API 代理（平台 Key 鉴权，Anthropic 格式） |
 | `GET /v1/models` | 可用模型列表（平台 Key 鉴权） |
 | `POST /api/auth/register` | 用户注册 |
 | `POST /api/auth/login` | 登录获取 JWT |
