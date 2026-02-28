@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db, close_db
-from routers import auth, admin, user_keys, user, gateway
+from routers import auth, admin, user_keys, user, gateway, anthropic_gateway
 
 settings = get_settings()
 
@@ -85,3 +85,6 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 # 网关代理路由（OpenAI 兼容）
 app.include_router(gateway.router, prefix="/v1", tags=["Gateway"])
+
+# Anthropic Messages API 网关路由
+app.include_router(anthropic_gateway.router, prefix="/v1", tags=["Anthropic Gateway"])
