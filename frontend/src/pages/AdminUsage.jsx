@@ -18,7 +18,6 @@ import {
 import { adminUsageApi } from '../api'
 
 const { Title, Text } = Typography
-const { TabPane } = Tabs
 const { RangePicker } = DatePicker
 
 // 图表颜色
@@ -265,88 +264,93 @@ export default function AdminUsage() {
 
       {/* Tab 切换 */}
       <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <TabPane
-            tab={<span><BarChartOutlined /> 按模型</span>}
-            key="model"
-          >
-            <Row gutter={[24, 24]}>
-              <Col xs={24} lg={10}>
-                <div style={{ padding: '16px 0' }}>
-                  {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={100}
-                          fill="#8884d8"
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <RechartsTooltip
-                          formatter={(value) => `$${value.toFixed(4)}`}
-                        />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <Empty description="暂无数据" style={{ padding: '80px 0' }} />
-                  )}
-                </div>
-              </Col>
-              <Col xs={24} lg={14}>
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'model',
+              label: <span><BarChartOutlined /> 按模型</span>,
+              children: (
+                <Row gutter={[24, 24]}>
+                  <Col xs={24} lg={10}>
+                    <div style={{ padding: '16px 0' }}>
+                      {pieData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="value"
+                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            >
+                              {pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <RechartsTooltip
+                              formatter={(value) => `$${value.toFixed(4)}`}
+                            />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <Empty description="暂无数据" style={{ padding: '80px 0' }} />
+                      )}
+                    </div>
+                  </Col>
+                  <Col xs={24} lg={14}>
+                    <Table
+                      columns={modelColumns}
+                      dataSource={byModel?.models || []}
+                      rowKey="model_id"
+                      pagination={{ pageSize: 10 }}
+                      size="small"
+                    />
+                  </Col>
+                </Row>
+              ),
+            },
+            {
+              key: 'user',
+              label: <span><UserOutlined /> 按用户</span>,
+              children: (
                 <Table
-                  columns={modelColumns}
-                  dataSource={byModel?.models || []}
-                  rowKey="model_id"
+                  columns={userColumns}
+                  dataSource={byUser?.users || []}
+                  rowKey="user_id"
                   pagination={{ pageSize: 10 }}
+                  expandable={{
+                    expandedRowRender: (record) => (
+                      <Table
+                        columns={[
+                          { title: '模型', dataIndex: 'model_id', key: 'model_id' },
+                          { title: '请求数', dataIndex: 'request_count', key: 'request_count' },
+                          {
+                            title: '费用',
+                            dataIndex: 'cost_usd',
+                            key: 'cost_usd',
+                            render: (v) => `$${parseFloat(v || 0).toFixed(4)}`,
+                          },
+                        ]}
+                        dataSource={record.models || []}
+                        rowKey="model_id"
+                        pagination={false}
+                        size="small"
+                      />
+                    ),
+                    rowExpandable: (record) => record.models && record.models.length > 0,
+                  }}
                   size="small"
                 />
-              </Col>
-            </Row>
-          </TabPane>
-
-          <TabPane
-            tab={<span><UserOutlined /> 按用户</span>}
-            key="user"
-          >
-            <Table
-              columns={userColumns}
-              dataSource={byUser?.users || []}
-              rowKey="user_id"
-              pagination={{ pageSize: 10 }}
-              expandable={{
-                expandedRowRender: (record) => (
-                  <Table
-                    columns={[
-                      { title: '模型', dataIndex: 'model_id', key: 'model_id' },
-                      { title: '请求数', dataIndex: 'request_count', key: 'request_count' },
-                      {
-                        title: '费用',
-                        dataIndex: 'cost_usd',
-                        key: 'cost_usd',
-                        render: (v) => `$${parseFloat(v || 0).toFixed(4)}`,
-                      },
-                    ]}
-                    dataSource={record.models || []}
-                    rowKey="model_id"
-                    pagination={false}
-                    size="small"
-                  />
-                ),
-                rowExpandable: (record) => record.models && record.models.length > 0,
-              }}
-              size="small"
-            />
-          </TabPane>
-        </Tabs>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       {/* Top 模型和用户 */}

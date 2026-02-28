@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   Table, Button, Modal, Form, Input, InputNumber, Switch, Select,
-  message, Tag, Space, Card, Typography, Popconfirm, Tabs, Divider
+  message, Tag, Space, Card, Typography, Popconfirm, Divider
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined,
@@ -13,7 +13,6 @@ import {
 import { adminProviderApi } from '../api'
 
 const { Title, Text } = Typography
-const { TabPane } = Tabs
 const { TextArea } = Input
 
 export default function AdminProviders() {

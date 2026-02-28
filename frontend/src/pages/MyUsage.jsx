@@ -19,7 +19,6 @@ import dayjs from 'dayjs'
 import { userKeyApi, userUsageApi } from '../api'
 
 const { Title, Text } = Typography
-const { TabPane } = Tabs
 const { RangePicker } = DatePicker
 
 // 图表颜色
@@ -333,52 +332,57 @@ export default function MyUsage() {
 
       {/* Tab 切换详细数据 */}
       <Card>
-        <Tabs defaultActiveKey="model">
-          <TabPane
-            tab={<span><ThunderboltOutlined /> 按模型</span>}
-            key="model"
-          >
-            <Table
-              columns={modelColumns}
-              dataSource={usageByModel?.models || []}
-              rowKey="model_id"
-              pagination={{ pageSize: 10 }}
-              size="small"
-            />
-          </TabPane>
-          <TabPane
-            tab={<span><KeyOutlined /> 按 Key</span>}
-            key="key"
-          >
-            <Table
-              columns={keyColumns}
-              dataSource={usageByKey?.keys || []}
-              rowKey="key_suffix"
-              pagination={{ pageSize: 10 }}
-              expandable={{
-                expandedRowRender: (record) => (
-                  <Table
-                    columns={[
-                      { title: '模型', dataIndex: 'model_id', key: 'model_id' },
-                      { title: '请求数', dataIndex: 'request_count', key: 'request_count' },
-                      {
-                        title: '费用',
-                        dataIndex: 'cost_usd',
-                        key: 'cost_usd',
-                        render: (v) => `$${parseFloat(v || 0).toFixed(4)}`,
-                      },
-                    ]}
-                    dataSource={record.models || []}
-                    rowKey="model_id"
-                    pagination={false}
-                    size="small"
-                  />
-                ),
-              }}
-              size="small"
-            />
-          </TabPane>
-        </Tabs>
+        <Tabs
+          defaultActiveKey="model"
+          items={[
+            {
+              key: 'model',
+              label: <span><ThunderboltOutlined /> 按模型</span>,
+              children: (
+                <Table
+                  columns={modelColumns}
+                  dataSource={usageByModel?.models || []}
+                  rowKey="model_id"
+                  pagination={{ pageSize: 10 }}
+                  size="small"
+                />
+              ),
+            },
+            {
+              key: 'key',
+              label: <span><KeyOutlined /> 按 Key</span>,
+              children: (
+                <Table
+                  columns={keyColumns}
+                  dataSource={usageByKey?.keys || []}
+                  rowKey="key_suffix"
+                  pagination={{ pageSize: 10 }}
+                  expandable={{
+                    expandedRowRender: (record) => (
+                      <Table
+                        columns={[
+                          { title: '模型', dataIndex: 'model_id', key: 'model_id' },
+                          { title: '请求数', dataIndex: 'request_count', key: 'request_count' },
+                          {
+                            title: '费用',
+                            dataIndex: 'cost_usd',
+                            key: 'cost_usd',
+                            render: (v) => `$${parseFloat(v || 0).toFixed(4)}`,
+                          },
+                        ]}
+                        dataSource={record.models || []}
+                        rowKey="model_id"
+                        pagination={false}
+                        size="small"
+                      />
+                    ),
+                  }}
+                  size="small"
+                />
+              ),
+            },
+          ]}
+        />
       </Card>
     </div>
   )
