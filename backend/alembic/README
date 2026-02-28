@@ -1,3 +1,1 @@
-# Alembic 数据库迁移目录
-# Step 2 实现后初始化：
-# cd backend && alembic init alembic
+Generic single-database configuration.
