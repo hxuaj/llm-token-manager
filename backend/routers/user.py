@@ -2,8 +2,8 @@
 用户相关路由
 
 提供：
-- GET /api/user/usage: 获取用户用量统计
 - GET /api/user/me: 获取当前用户信息
+- GET /api/user/usage: 获取用户用量统计
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends
@@ -16,6 +16,22 @@ from middleware.auth import get_current_active_user
 from services.quota import get_monthly_usage_for_quota
 
 router = APIRouter()
+
+
+class UserInfoResponse(BaseModel):
+    """用户信息响应"""
+    id: str
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    monthly_quota_usd: float
+    rpm_limit: int
+    max_keys: int
+    created_at: str
+
+    class Config:
+        from_attributes = True
 
 
 class UserUsageResponse(BaseModel):
@@ -31,6 +47,29 @@ class UserUsageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+@router.get("/me", response_model=UserInfoResponse)
+async def get_current_user_info(
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    获取当前用户信息
+
+    返回当前登录用户的详细信息
+    """
+    role = current_user.role.value if hasattr(current_user.role, 'value') else current_user.role
+    return UserInfoResponse(
+        id=str(current_user.id),
+        username=current_user.username,
+        email=current_user.email,
+        role=role,
+        is_active=current_user.is_active,
+        monthly_quota_usd=float(current_user.monthly_quota_usd),
+        rpm_limit=current_user.rpm_limit,
+        max_keys=current_user.max_keys,
+        created_at=current_user.created_at.isoformat()
+    )
 
 
 @router.get("/usage", response_model=UserUsageResponse)
