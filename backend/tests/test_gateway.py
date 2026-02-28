@@ -449,3 +449,74 @@ async def test_list_models(client, user_api_key):
         data = response.json()
         assert "data" in data
         assert isinstance(data["data"], list)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# x-api-key 鉴权测试 (Anthropic SDK 兼容)
+# ─────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_auth_x_api_key(client, user_api_key):
+    """通过 x-api-key 头鉴权 - 应返回 200"""
+    key_obj, raw_key = user_api_key
+
+    with patch('routers.gateway.forward_request') as mock_forward:
+        with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
+            mock_provider.return_value = "openai"
+            mock_forward.return_value = {
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "choices": [{"message": {"content": "Hello!"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+            }
+
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "gpt-4o",
+                    "messages": [{"role": "user", "content": "Hello"}]
+                },
+                headers={"x-api-key": raw_key}  # 使用 x-api-key 而不是 Authorization
+            )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_bearer_still_works(client, user_api_key):
+    """Bearer 鉴权方式仍然有效 - 应返回 200"""
+    key_obj, raw_key = user_api_key
+
+    with patch('routers.gateway.forward_request') as mock_forward:
+        with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
+            mock_provider.return_value = "openai"
+            mock_forward.return_value = {
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "choices": [{"message": {"content": "Hello!"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+            }
+
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "gpt-4o",
+                    "messages": [{"role": "user", "content": "Hello"}]
+                },
+                headers={"Authorization": f"Bearer {raw_key}"}
+            )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_missing_key_anthropic_format(client):
+    """无任何鉴权头 - 应返回 401"""
+    response = await client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Hello"}]
+        }
+    )
+    assert response.status_code == 401

@@ -6,9 +6,10 @@
 - 平台 Key 认证（用于 API 网关）
 - 获取当前用户
 - Admin 权限校验
+- Anthropic SDK 兼容的 x-api-key 鉴权
 """
 from typing import Optional, Tuple
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -109,28 +110,62 @@ async def get_current_admin_user(
 # 平台 Key 认证（用于 API 网关）
 # ─────────────────────────────────────────────────────────────────────
 
+def extract_platform_key(request: Request) -> str:
+    """
+    从请求中提取平台 Key
+
+    支持两种方式（按优先级）：
+    1. Authorization: Bearer {key}
+    2. x-api-key: {key}（Anthropic SDK / Claude Code 惯例）
+
+    Args:
+        request: FastAPI 请求对象
+
+    Returns:
+        平台 Key 字符串
+
+    Raises:
+        HTTPException: 401 如果没有找到有效的鉴权头
+    """
+    # 1. 优先检查 Authorization: Bearer
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header[7:]  # 去掉 "Bearer " 前缀
+
+    # 2. 检查 x-api-key（Anthropic SDK 惯例）
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key:
+        return x_api_key
+
+    # 都没有，返回 401
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing API key",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def get_user_by_api_key(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> Tuple[User, UserApiKey]:
     """
     通过平台 API Key 获取用户
 
     用于网关代理接口的认证，验证平台 Key 并返回用户和 Key 对象
+    支持 Bearer 和 x-api-key 两种鉴权方式
 
     Raises:
         HTTPException: 401 如果 Key 无效、不存在或已吊销
     """
+    # 提取平台 Key（支持 Bearer 和 x-api-key）
+    api_key = extract_platform_key(request)
+
     auth_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API key",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
-    if credentials is None:
-        raise auth_exception
-
-    api_key = credentials.credentials
 
     # 验证 Key 格式
     if not api_key.startswith(KEY_PREFIX):
