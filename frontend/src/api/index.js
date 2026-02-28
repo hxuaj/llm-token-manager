@@ -190,4 +190,90 @@ export const modelApi = {
   list: () => api.get('/v1/models'),
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// 用户用量统计接口
+// ─────────────────────────────────────────────────────────────────────
+
+export const userUsageApi = {
+  /**
+   * 按模型统计
+   */
+  byModel: (params) => api.get('/api/user/usage/by-model', { params }),
+
+  /**
+   * 按 Key 统计
+   */
+  byKey: (params) => api.get('/api/user/usage/by-key', { params }),
+
+  /**
+   * 时间线统计
+   */
+  timeline: (params) => api.get('/api/user/usage/timeline', { params }),
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Admin 用量统计接口
+// ─────────────────────────────────────────────────────────────────────
+
+export const adminUsageApi = {
+  /**
+   * 用量概览
+   */
+  overview: (params) => api.get('/api/admin/usage/overview', { params }),
+
+  /**
+   * 按模型统计
+   */
+  byModel: (params) => api.get('/api/admin/usage/by-model', { params }),
+
+  /**
+   * 按用户统计
+   */
+  byUser: (params) => api.get('/api/admin/usage/by-user', { params }),
+
+  /**
+   * 导出 CSV
+   */
+  export: (params) => api.get('/api/admin/usage/export', {
+    params,
+    responseType: 'blob'
+  }),
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Admin 模型管理接口
+// ─────────────────────────────────────────────────────────────────────
+
+export const adminModelApi = {
+  /**
+   * 获取供应商的模型列表
+   */
+  list: (providerId) => api.get(`/api/admin/providers/${providerId}/models`),
+
+  /**
+   * 触发模型发现
+   */
+  discover: (providerId) => api.post(`/api/admin/providers/${providerId}/discover-models`),
+
+  /**
+   * 更新模型状态
+   */
+  updateStatus: (modelId, status) => api.put(`/api/admin/models/${modelId}/status`, { status }),
+
+  /**
+   * 更新模型定价
+   */
+  updatePricing: (modelId, data) => api.put(`/api/admin/models/${modelId}/pricing`, data),
+
+  /**
+   * 手动添加模型
+   */
+  create: (data) => api.post('/api/admin/models', data),
+
+  /**
+   * 批量启用模型
+   */
+  batchActivate: (providerId, data) => api.post(`/api/admin/providers/${providerId}/models/batch-activate`, data),
+}
+
 export default api

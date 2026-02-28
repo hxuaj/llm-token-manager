@@ -20,6 +20,7 @@ import MyUsage from './pages/MyUsage'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminUsers from './pages/AdminUsers'
 import AdminProviders from './pages/AdminProviders'
+import AdminUsage from './pages/AdminUsage'
 
 const { Header, Content, Footer, Sider } = Layout
 const { Text } = Typography
@@ -63,6 +64,7 @@ function MainLayout({ children }) {
     if (path === '/admin') return 'admin'
     if (path === '/admin/users') return 'admin-users'
     if (path === '/admin/providers') return 'admin-providers'
+    if (path === '/admin/usage') return 'admin-usage'
     return 'home'
   }
 
@@ -98,6 +100,11 @@ function MainLayout({ children }) {
             key: 'admin-dashboard',
             icon: <DashboardOutlined />,
             label: <Link to="/admin">仪表盘</Link>,
+          },
+          {
+            key: 'admin-usage',
+            icon: <BarChartOutlined />,
+            label: <Link to="/admin/usage">用量分析</Link>,
           },
           {
             key: 'admin-users',
@@ -359,6 +366,16 @@ function AppRoutes() {
           <ProtectedRoute adminOnly>
             <MainLayout>
               <AdminDashboard />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/usage"
+        element={
+          <ProtectedRoute adminOnly>
+            <MainLayout>
+              <AdminUsage />
             </MainLayout>
           </ProtectedRoute>
         }
