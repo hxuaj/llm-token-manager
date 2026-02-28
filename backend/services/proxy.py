@@ -33,6 +33,7 @@ MODEL_PREFIX_TO_PROVIDER = {
     "qwen-": "qwen",
     "ernie-": "ernie",
     "glm-": "zhipu",
+    "minimax-": "minimax",
     # OpenRouter 模型格式: provider/model-name
     "openai/": "openrouter",
     "anthropic/": "openrouter",

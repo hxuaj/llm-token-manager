@@ -13,6 +13,12 @@ from database import Base
 from models.user import GUID
 
 
+class ApiFormat:
+    """API 格式枚举"""
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
 class Provider(Base):
     """供应商表"""
     __tablename__ = "providers"
@@ -30,6 +36,11 @@ class Provider(Base):
     )
     base_url: Mapped[str] = mapped_column(
         String(255),
+        nullable=False
+    )
+    api_format: Mapped[str] = mapped_column(
+        String(20),
+        default=ApiFormat.OPENAI,
         nullable=False
     )
     enabled: Mapped[bool] = mapped_column(

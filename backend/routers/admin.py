@@ -71,6 +71,7 @@ class ProviderCreate(BaseModel):
     """创建供应商"""
     name: str = Field(..., min_length=1, max_length=50)
     base_url: str = Field(..., max_length=255)
+    api_format: str = Field(default="openai", pattern="^(openai|anthropic)$")
     enabled: bool = True
     config: Optional[str] = None
 
@@ -78,6 +79,7 @@ class ProviderCreate(BaseModel):
 class ProviderUpdate(BaseModel):
     """更新供应商"""
     base_url: Optional[str] = None
+    api_format: Optional[str] = Field(default=None, pattern="^(openai|anthropic)$")
     enabled: Optional[bool] = None
     config: Optional[str] = None
 
@@ -87,6 +89,7 @@ class ProviderResponse(BaseModel):
     id: str
     name: str
     base_url: str
+    api_format: str
     enabled: bool
     config: Optional[str]
     created_at: str
@@ -176,6 +179,7 @@ def provider_to_response(provider: Provider) -> ProviderResponse:
         id=str(provider.id),
         name=provider.name,
         base_url=provider.base_url,
+        api_format=provider.api_format,
         enabled=provider.enabled,
         config=provider.config,
         created_at=provider.created_at.isoformat()
@@ -207,6 +211,7 @@ def provider_to_detail(provider: Provider) -> ProviderDetail:
         id=str(provider.id),
         name=provider.name,
         base_url=provider.base_url,
+        api_format=provider.api_format,
         enabled=provider.enabled,
         config=provider.config,
         created_at=provider.created_at.isoformat(),
@@ -488,6 +493,7 @@ async def create_provider(
     provider = Provider(
         name=data.name,
         base_url=data.base_url,
+        api_format=data.api_format,
         enabled=data.enabled,
         config=data.config
     )
@@ -517,6 +523,8 @@ async def update_provider(
 
     if data.base_url is not None:
         provider.base_url = data.base_url
+    if data.api_format is not None:
+        provider.api_format = data.api_format
     if data.enabled is not None:
         provider.enabled = data.enabled
     if data.config is not None:
