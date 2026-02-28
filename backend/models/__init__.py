@@ -9,6 +9,9 @@ from models.model_pricing import ModelPricing
 from models.request_log import RequestLog, RequestStatus
 from models.monthly_usage import MonthlyUsage
 from models.model_catalog import ModelCatalog, ModelStatus, ModelSource
+from models.model_usage_daily import ModelUsageDaily
+from models.model_pricing_history import ModelPricingHistory
+from models.user_model_limit import UserModelLimit
 
 __all__ = [
     "User", "UserRole", "GUID",
@@ -17,5 +20,8 @@ __all__ = [
     "ModelPricing",
     "RequestLog", "RequestStatus",
     "MonthlyUsage",
-    "ModelCatalog", "ModelStatus", "ModelSource"
+    "ModelCatalog", "ModelStatus", "ModelSource",
+    "ModelUsageDaily",
+    "ModelPricingHistory",
+    "UserModelLimit",
 ]
