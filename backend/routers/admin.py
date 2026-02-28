@@ -8,12 +8,14 @@ Admin 管理路由
 - 模型单价配置
 """
 import uuid
+import json
+import logging
 from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -22,12 +24,15 @@ from database import get_db
 from models.user import User, UserRole
 from models.user_api_key import UserApiKey, KeyStatus
 from models.provider import Provider
-from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
+from models.provider_api_key import ProviderApiKey, ProviderKeyStatus, KeyPlan
 from models.model_pricing import ModelPricing
 from middleware.auth import get_current_admin_user
 from services.encryption import encrypt, decrypt, extract_key_suffix
+from services.key_selector import KeySelector
+from services.model_discovery import get_discovery_service, UnsupportedDiscoveryError, DiscoveryUpstreamError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -108,6 +113,19 @@ class ProviderKeyCreate(BaseModel):
     """创建供应商 Key"""
     api_key: str
     rpm_limit: int = 60
+    key_plan: str = Field(default="standard", pattern="^(standard|coding_plan)$")
+    plan_models: Optional[List[str]] = None  # coding_plan 时必填
+    plan_description: Optional[str] = None
+    override_input_price: Optional[float] = None
+    override_output_price: Optional[float] = None
+
+    @field_validator('plan_models')
+    @classmethod
+    def validate_plan_models(cls, v, info):
+        """验证 coding_plan 时必须提供 plan_models"""
+        if info.data.get('key_plan') == 'coding_plan' and (not v or len(v) == 0):
+            raise ValueError('plan_models is required when key_plan is "coding_plan"')
+        return v
 
 
 class ProviderKeyResponse(BaseModel):
@@ -117,7 +135,11 @@ class ProviderKeyResponse(BaseModel):
     key_suffix: str
     rpm_limit: int
     status: str
+    key_plan: str = "standard"
+    plan_models: Optional[List[str]] = None
+    plan_description: Optional[str] = None
     created_at: str
+    discovery: Optional[dict] = None  # 模型发现结果（仅首次添加 standard Key 时）
 
     class Config:
         from_attributes = True
@@ -557,20 +579,75 @@ async def add_provider_key(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
+    # 校验 coding_plan 必须提供 plan_models
+    if data.key_plan == "coding_plan" and (not data.plan_models or len(data.plan_models) == 0):
+        raise HTTPException(
+            status_code=400,
+            detail="plan_models is required when key_plan is 'coding_plan'"
+        )
+
     # 加密存储
     encrypted_key = encrypt(data.api_key)
     key_suffix = extract_key_suffix(data.api_key)
 
+    # 构建 API Key 对象
     api_key = ProviderApiKey(
         provider_id=provider_uuid,
         encrypted_key=encrypted_key,
         key_suffix=key_suffix,
         rpm_limit=data.rpm_limit,
-        status=ProviderKeyStatus.ACTIVE.value
+        status=ProviderKeyStatus.ACTIVE.value,
+        key_plan=data.key_plan,
+        plan_models=json.dumps(data.plan_models) if data.plan_models else None,
+        plan_description=data.plan_description,
+        override_input_price=Decimal(str(data.override_input_price)) if data.override_input_price is not None else None,
+        override_output_price=Decimal(str(data.override_output_price)) if data.override_output_price is not None else None,
     )
     db.add(api_key)
     await db.commit()
     await db.refresh(api_key)
+
+    # 模型发现结果
+    discovery_result = None
+
+    # 仅当添加 standard Key 且是该供应商的首个 standard Key 时，触发模型发现
+    if data.key_plan == "standard":
+        try:
+            standard_key_count = await KeySelector.count_standard_keys(provider, db)
+            # 由于刚添加了一个，所以 standard_key_count 至少为 1
+            # 我们需要检查是否是第一个（即添加前为 0）
+            # 由于事务已提交，这里简化处理：只在成功添加后触发一次
+
+            # 检查是否已有其他 standard Key（排除刚添加的）
+            result = await db.execute(
+                select(ProviderApiKey).where(
+                    ProviderApiKey.provider_id == provider_uuid,
+                    ProviderApiKey.status == ProviderKeyStatus.ACTIVE.value,
+                    ProviderApiKey.key_plan == KeyPlan.STANDARD.value,
+                    ProviderApiKey.id != api_key.id
+                ).limit(1)
+            )
+            has_other_standard = result.scalar_one_or_none() is not None
+
+            if not has_other_standard:
+                # 首个 standard Key，触发模型发现
+                try:
+                    discovery_service = get_discovery_service()
+                    discovery_result = await discovery_service.discover_models(
+                        provider, api_key, db
+                    )
+                    discovery_result = discovery_result.to_dict()
+                except UnsupportedDiscoveryError as e:
+                    logger.warning(f"Model discovery not supported for provider {provider.name}: {e}")
+                    discovery_result = {"error": "discovery_not_supported", "message": str(e)}
+                except DiscoveryUpstreamError as e:
+                    logger.warning(f"Model discovery failed for provider {provider.name}: {e}")
+                    discovery_result = {"error": "upstream_error", "message": str(e)}
+                except Exception as e:
+                    logger.error(f"Model discovery error for provider {provider.name}: {e}")
+                    discovery_result = {"error": "internal_error", "message": str(e)}
+        except Exception as e:
+            logger.error(f"Error checking standard keys for discovery trigger: {e}")
 
     return ProviderKeyResponse(
         id=str(api_key.id),
@@ -578,7 +655,11 @@ async def add_provider_key(
         key_suffix=api_key.key_suffix,
         rpm_limit=api_key.rpm_limit,
         status=api_key.status.value if hasattr(api_key.status, 'value') else api_key.status,
-        created_at=api_key.created_at.isoformat()
+        key_plan=api_key.key_plan,
+        plan_models=data.plan_models,
+        plan_description=api_key.plan_description,
+        created_at=api_key.created_at.isoformat(),
+        discovery=discovery_result
     )
 
 
@@ -604,6 +685,9 @@ async def list_provider_keys(
         "key_suffix": key.key_suffix,
         "rpm_limit": key.rpm_limit,
         "status": key.status.value if hasattr(key.status, 'value') else key.status,
+        "key_plan": key.key_plan,
+        "plan_models": key.get_plan_models_list() if key.plan_models else None,
+        "plan_description": key.plan_description,
         "created_at": key.created_at.isoformat()
     } for key in keys]
 

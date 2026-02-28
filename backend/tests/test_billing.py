@@ -10,6 +10,24 @@
 import pytest
 from datetime import datetime
 from decimal import Decimal
+from unittest.mock import patch, MagicMock
+
+
+def _mock_provider_key():
+    """创建 mock 的供应商 Key 结果"""
+    mock_provider = MagicMock()
+    mock_provider.id = "test-provider-id"
+    mock_provider.name = "test-provider"
+
+    mock_key = MagicMock()
+    mock_key.id = "test-key-id"
+    mock_key.key_suffix = "abcd"
+    mock_key.key_plan = "standard"
+    mock_key.override_input_price = None
+    mock_key.override_output_price = None
+    mock_key.is_coding_plan = False
+
+    return (mock_provider, mock_key, "decrypted-key")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -23,22 +41,24 @@ async def test_request_log_created(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
-            mock_forward.return_value = {
-                "id": "chatcmpl-123",
-                "object": "chat.completion",
-                "choices": [{"message": {"content": "Hello!"}}],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
-            }
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
+                mock_forward.return_value = {
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion",
+                    "choices": [{"message": {"content": "Hello!"}}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+                }
 
-            response = await client.post(
-                "/v1/chat/completions",
-                json={
-                    "model": "gpt-4o",
-                    "messages": [{"role": "user", "content": "Hello"}]
-                },
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json={
+                        "model": "gpt-4o",
+                        "messages": [{"role": "user", "content": "Hello"}]
+                    },
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
     assert response.status_code == 200
 
@@ -67,18 +87,20 @@ async def test_log_contains_key_id(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
-            mock_forward.return_value = {
-                "id": "chatcmpl-123",
-                "choices": [{"message": {"content": "test"}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-            }
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
+                mock_forward.return_value = {
+                    "id": "chatcmpl-123",
+                    "choices": [{"message": {"content": "test"}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+                }
 
-            await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
     from models.request_log import RequestLog
     from sqlalchemy import select
@@ -127,18 +149,20 @@ async def test_cost_calculation(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
-            mock_forward.return_value = {
-                "id": "chatcmpl-123",
-                "choices": [{"message": {"content": "test"}}],
-                "usage": {"prompt_tokens": 1000, "completion_tokens": 1000, "total_tokens": 2000}
-            }
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
+                mock_forward.return_value = {
+                    "id": "chatcmpl-123",
+                    "choices": [{"message": {"content": "test"}}],
+                    "usage": {"prompt_tokens": 1000, "completion_tokens": 1000, "total_tokens": 2000}
+                }
 
-            await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
     from models.request_log import RequestLog
     from sqlalchemy import select
@@ -165,31 +189,33 @@ async def test_monthly_usage_accumulated(client, user_api_key, db_session, test_
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
 
-            # 第一次调用
-            mock_forward.return_value = {
-                "id": "chatcmpl-1",
-                "choices": [{"message": {"content": "test1"}}],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
-            }
-            await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test1"}]},
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                # 第一次调用
+                mock_forward.return_value = {
+                    "id": "chatcmpl-1",
+                    "choices": [{"message": {"content": "test1"}}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+                }
+                await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test1"}]},
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
-            # 第二次调用
-            mock_forward.return_value = {
-                "id": "chatcmpl-2",
-                "choices": [{"message": {"content": "test2"}}],
-                "usage": {"prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300}
-            }
-            await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test2"}]},
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                # 第二次调用
+                mock_forward.return_value = {
+                    "id": "chatcmpl-2",
+                    "choices": [{"message": {"content": "test2"}}],
+                    "usage": {"prompt_tokens": 200, "completion_tokens": 100, "total_tokens": 300}
+                }
+                await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test2"}]},
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
     from models.monthly_usage import MonthlyUsage
     from sqlalchemy import select
@@ -235,19 +261,21 @@ async def test_different_keys_separate_stats(client, test_user, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
-            mock_forward.return_value = {
-                "id": "chatcmpl-1",
-                "choices": [{"message": {"content": "test"}}],
-                "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
-            }
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
+                mock_forward.return_value = {
+                    "id": "chatcmpl-1",
+                    "choices": [{"message": {"content": "test"}}],
+                    "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+                }
 
-            # 用第一个 Key 调用
-            await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
-                headers={"Authorization": f"Bearer {keys[0][1]}"}
-            )
+                # 用第一个 Key 调用
+                await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
+                    headers={"Authorization": f"Bearer {keys[0][1]}"}
+                )
 
     from models.request_log import RequestLog
     from sqlalchemy import select
@@ -272,18 +300,20 @@ async def test_cost_decimal_precision(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
-            mock_forward.return_value = {
-                "id": "chatcmpl-1",
-                "choices": [{"message": {"content": "test"}}],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-            }
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
+                mock_forward.return_value = {
+                    "id": "chatcmpl-1",
+                    "choices": [{"message": {"content": "test"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                }
 
-            await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
     from models.request_log import RequestLog
     from sqlalchemy import select
@@ -306,14 +336,16 @@ async def test_failed_request_logged(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            mock_provider.return_value = "openai"
-            mock_forward.side_effect = Exception("Provider error")
+            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                mock_provider.return_value = "openai"
+                mock_get_key.return_value = _mock_provider_key()
+                mock_forward.side_effect = Exception("Provider error")
 
-            response = await client.post(
-                "/v1/chat/completions",
-                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
-                headers={"Authorization": f"Bearer {raw_key}"}
-            )
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "test"}]},
+                    headers={"Authorization": f"Bearer {raw_key}"}
+                )
 
     # 请求应该失败
     assert response.status_code in [500, 502, 503]
@@ -331,7 +363,3 @@ async def test_failed_request_logged(client, user_api_key, db_session):
         assert log.status == "error"
         # 失败请求 cost 应该为 0
         assert float(log.cost_usd) == 0
-
-
-# 需要导入 patch
-from unittest.mock import patch

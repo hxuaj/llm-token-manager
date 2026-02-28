@@ -65,6 +65,24 @@ async def get_monthly_usage_for_quota(
     return Decimal("0"), 0, 0
 
 
+async def get_monthly_usage(
+    user_id: uuid.UUID,
+    db: AsyncSession
+) -> Decimal:
+    """
+    获取用户当月已用费用
+
+    Args:
+        user_id: 用户 ID
+        db: 数据库 session
+
+    Returns:
+        已用费用（USD）
+    """
+    cost, _, _ = await get_monthly_usage_for_quota(user_id, db)
+    return cost
+
+
 async def check_quota(
     user: User,
     db: AsyncSession

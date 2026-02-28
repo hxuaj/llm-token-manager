@@ -75,6 +75,11 @@ class Provider(Base):
         back_populates="provider",
         cascade="all, delete-orphan"
     )
+    models: Mapped[list["ModelCatalog"]] = relationship(
+        "ModelCatalog",
+        back_populates="provider",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Provider {self.name}>"

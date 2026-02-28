@@ -65,6 +65,10 @@ async def log_request(
     status: str = RequestStatus.SUCCESS,
     error_message: Optional[str] = None,
     provider_id: Optional[uuid.UUID] = None,
+    cost_usd: Optional[Decimal] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    key_plan: str = "standard",
     db: AsyncSession = None
 ) -> RequestLog:
     """
@@ -80,13 +84,24 @@ async def log_request(
         status: 请求状态
         error_message: 错误信息
         provider_id: 供应商 ID
+        cost_usd: 费用（如果已计算，可传入；否则自动计算）
+        input_tokens: 输入 token 数（新字段，与 prompt_tokens 同步）
+        output_tokens: 输出 token 数（新字段，与 completion_tokens 同步）
+        key_plan: Key 计划类型
         db: 数据库 session
 
     Returns:
         RequestLog 对象
     """
-    # 计算费用
-    cost_usd = await calculate_cost(model, prompt_tokens, completion_tokens, db)
+    # 如果未传入费用，则计算
+    if cost_usd is None:
+        cost_usd = await calculate_cost(model, prompt_tokens, completion_tokens, db)
+
+    # 同步 token 字段
+    if input_tokens is None:
+        input_tokens = prompt_tokens
+    if output_tokens is None:
+        output_tokens = completion_tokens
 
     # 创建日志记录
     request_id = f"req_{uuid.uuid4().hex[:24]}"
@@ -100,10 +115,13 @@ async def log_request(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=prompt_tokens + completion_tokens,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         cost_usd=cost_usd,
         latency_ms=latency_ms,
         status=status,
         error_message=error_message,
+        key_plan=key_plan,
     )
 
     db.add(log)

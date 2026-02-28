@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db, close_db
-from routers import auth, admin, user_keys, user, gateway, anthropic_gateway
+from routers import auth, admin, admin_models, user_keys, user, gateway, anthropic_gateway
 
 settings = get_settings()
 
@@ -82,6 +82,9 @@ app.include_router(user_keys.router, prefix="/api/user/keys", tags=["User Keys"]
 
 # Admin 管理路由
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+
+# Admin 模型管理路由
+app.include_router(admin_models.router, prefix="/api/admin", tags=["Admin Models"])
 
 # 网关代理路由（OpenAI 兼容）
 app.include_router(gateway.router, prefix="/v1", tags=["Gateway"])
