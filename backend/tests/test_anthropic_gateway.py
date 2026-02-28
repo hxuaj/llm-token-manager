@@ -23,9 +23,9 @@ async def test_auth_bearer_token(client, user_api_key):
     """Authorization: Bearer ltm-sk-xxx → 200"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -53,9 +53,9 @@ async def test_auth_x_api_key(client, user_api_key):
     """x-api-key: ltm-sk-xxx → 200"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -141,9 +141,9 @@ async def test_route_claude_to_anthropic(client, user_api_key):
     """model=claude-sonnet-4-* → 请求发送到 Anthropic mock"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -176,9 +176,9 @@ async def test_route_glm_to_zhipu(client, user_api_key):
     """model=glm-5 → 请求发送到智谱 mock"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://open.bigmodel.cn/api/anthropic"
                 mock_resolve.return_value = mock_provider
@@ -208,9 +208,9 @@ async def test_route_minimax_to_minimax(client, user_api_key):
     """model=minimax-m2.5 → 请求发送到 MiniMax mock"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.minimax.chat"
                 mock_resolve.return_value = mock_provider
@@ -265,9 +265,9 @@ async def test_headers_forwarded(client, user_api_key):
     """anthropic-version 和 anthropic-beta 被透传到上游 mock"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -309,9 +309,9 @@ async def test_supplier_key_substituted(client, user_api_key):
     key_obj, raw_key = user_api_key
     vendor_key = "sk-ant-vendor-key-12345"
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -356,9 +356,9 @@ async def test_body_passthrough(client, user_api_key):
         "stream": False
     }
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -407,9 +407,9 @@ async def test_response_passthrough(client, user_api_key):
         }
     }
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -460,9 +460,9 @@ async def test_stream_passthrough(client, user_api_key):
         yield b'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}\n\n'
         yield b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_stream') as mock_stream_func:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_stream') as mock_stream_func:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -497,9 +497,9 @@ async def test_stream_usage_logged(client, user_api_key):
         yield b'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":8}}\n\n'
         yield b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_stream') as mock_stream_func:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_stream') as mock_stream_func:
                 with patch('routers.anthropic_gateway.log_request') as mock_log:
                     mock_provider = MagicMock()
                     mock_provider.base_url = "https://api.anthropic.com"
@@ -588,9 +588,9 @@ async def test_usage_logged(client, user_api_key, db_session):
     """成功请求后 request_logs 有新记录"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -623,9 +623,9 @@ async def test_upstream_500(client, user_api_key):
     """mock 上游返回 500 → 网关返回 502，Anthropic api_error"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
@@ -653,9 +653,9 @@ async def test_upstream_timeout(client, user_api_key):
     """mock 上游超时 → 网关返回 504，Anthropic api_error"""
     key_obj, raw_key = user_api_key
 
-    with patch('services.anthropic_proxy.resolve_provider') as mock_resolve:
-        with patch('services.anthropic_proxy.get_provider_key') as mock_key:
-            with patch('services.anthropic_proxy.proxy_request_non_stream') as mock_proxy:
+    with patch('routers.anthropic_gateway.resolve_provider') as mock_resolve:
+        with patch('routers.anthropic_gateway.get_provider_key') as mock_key:
+            with patch('routers.anthropic_gateway.proxy_request_non_stream') as mock_proxy:
                 mock_provider = MagicMock()
                 mock_provider.base_url = "https://api.anthropic.com"
                 mock_resolve.return_value = mock_provider
