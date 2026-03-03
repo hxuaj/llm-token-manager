@@ -115,6 +115,35 @@ llm-token-manager/
 
 **项目根目录**: `/Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5`
 
+### Python 开发环境
+
+**必须使用 miniconda 环境**: `llm-token-manager`
+
+所有 Python 相关操作（运行测试、启动服务、执行脚本等）都必须使用此环境的 Python 解释器：
+
+```bash
+# Python 解释器路径
+/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/python
+
+# 运行测试
+/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/python -m pytest
+
+# 启动后端服务
+/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/python -m uvicorn main:app --reload
+
+# 数据库迁移
+/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/alembic upgrade head
+
+# 安装依赖
+/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/pip install -r requirements.txt
+```
+
+**禁止**使用系统 Python 或其他 conda 环境。
+
+---
+
+### Git 命令规范
+
 由于 Agent 工作目录可能在 `backend/` 子目录，执行 git 命令时必须使用以下方式之一：
 
 ```bash
