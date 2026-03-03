@@ -80,15 +80,18 @@ llm-token-manager/
 每个功能的开发流程必须是：
 1. 先编写测试用例（可以先失败）
 2. 再编写实现代码
-3. 使用miniconda环境，运行 `cd backend && python -m pytest` 确认通过
-4. 使用绝对路径测试代码，当前项目路径：/Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5
-5. 提交代码
+3. 使用 miniconda 环境运行测试：`/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/python -m pytest`
+4. 提交代码
 
 **禁止**在没有对应测试的情况下提交任何 router 或 service 代码。
 
 ### 规则二：提交前必须测试通过
 
-在执行 `git commit` 之前，**必须**先运行 `cd backend && python -m pytest` 并确认所有测试通过。如果有测试失败，先修复再提交，绝不跳过。
+在执行 `git commit` 之前，**必须**先运行测试并确认所有测试通过：
+```bash
+/Users/hxuaj/miniconda3/envs/llm-token-manager/bin/python -m pytest
+```
+如果有测试失败，先修复再提交，绝不跳过。
 
 ### 规则三：每个逻辑变更单独提交
 
@@ -107,6 +110,22 @@ llm-token-manager/
 ---
 
 ## Git 工作流
+
+### 项目根目录
+
+**项目根目录**: `/Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5`
+
+由于 Agent 工作目录可能在 `backend/` 子目录，执行 git 命令时必须使用以下方式之一：
+
+```bash
+# 方式1: 使用 -C 指定仓库根目录（推荐）
+git -C /Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5 status
+git -C /Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5 add .
+git -C /Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5 commit -m "msg"
+
+# 方式2: 使用相对路径（当前在 backend/ 目录时）
+git add ../CLAUDE.md
+```
 
 ### 分支策略
 
