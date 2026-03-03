@@ -44,6 +44,7 @@ ANTHROPIC_MODEL_ROUTE_RULES = [
     ("claude-", "anthropic"),    # claude-sonnet-4-*, claude-opus-* 等
     ("glm-", "zhipu"),           # glm-5, glm-4.* 等
     ("minimax-", "minimax"),     # minimax-m2.5 等
+    ("MiniMax-", "minimax"),     # MiniMax-M2.5 等（大写）
 ]
 
 

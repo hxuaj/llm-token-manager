@@ -262,6 +262,7 @@ class ModelDiscoveryService:
             pricing_confirmed = has_confirmed_pricing(model_id)
 
             # 创建模型目录条目
+            # 自动发现的模型直接激活，无需管理员审核
             if default_pricing:
                 catalog_entry = ModelCatalog(
                     model_id=model_id,
@@ -273,7 +274,7 @@ class ModelDiscoveryService:
                     max_output=default_pricing.get("max_output"),
                     supports_vision=default_pricing.get("supports_vision", False),
                     supports_tools=default_pricing.get("supports_tools", True),
-                    status=ModelStatus.PENDING,
+                    status=ModelStatus.ACTIVE,  # 自动激活
                     is_pricing_confirmed=pricing_confirmed,
                     source=ModelSource.BUILTIN_DEFAULT if pricing_confirmed else ModelSource.AUTO_DISCOVERED,
                 )
@@ -288,7 +289,7 @@ class ModelDiscoveryService:
                     provider_id=provider.id,
                     input_price=Decimal("0"),
                     output_price=Decimal("0"),
-                    status=ModelStatus.PENDING,
+                    status=ModelStatus.ACTIVE,  # 自动激活
                     is_pricing_confirmed=False,
                     source=ModelSource.AUTO_DISCOVERED,
                 )

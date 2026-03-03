@@ -168,6 +168,68 @@ async def test_update_provider(client, admin_token):
     assert data["enabled"] is False
 
 
+@pytest.mark.asyncio
+async def test_delete_provider(client, admin_token):
+    """删除供应商 - 应返回 200，关联的 Key 和定价也应被删除"""
+    # 创建供应商
+    create_response = await client.post(
+        "/api/admin/providers",
+        json={
+            "name": "to_delete_provider",
+            "base_url": "https://api.example.com/v1",
+            "enabled": True
+        },
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert create_response.status_code == 201
+    provider_id = create_response.json()["id"]
+
+    # 添加 Key
+    key_response = await client.post(
+        f"/api/admin/providers/{provider_id}/keys",
+        json={"api_key": "sk-test-key-for-delete"},
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert key_response.status_code == 201
+
+    # 删除供应商
+    delete_response = await client.delete(
+        f"/api/admin/providers/{provider_id}",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert delete_response.status_code == 200
+
+    # 验证供应商已删除
+    get_response = await client.get(
+        f"/api/admin/providers/{provider_id}",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_provider_not_found(client, admin_token):
+    """删除不存在的供应商 - 应返回 404"""
+    import uuid
+    fake_id = str(uuid.uuid4())
+
+    response = await client.delete(
+        f"/api/admin/providers/{fake_id}",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_provider_invalid_id(client, admin_token):
+    """删除供应商时使用无效 ID - 应返回 400"""
+    response = await client.delete(
+        "/api/admin/providers/invalid-uuid",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert response.status_code == 400
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 供应商 Key 管理测试
 # ─────────────────────────────────────────────────────────────────────

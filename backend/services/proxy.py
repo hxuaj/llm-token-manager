@@ -26,6 +26,7 @@ from services.providers.anthropic_adapter import AnthropicAdapter
 from services.providers.qwen_adapter import QwenAdapter
 from services.providers.openrouter_adapter import OpenRouterAdapter
 from services.providers.zhipu_adapter import ZhipuAdapter
+from services.providers.minimax_adapter import MiniMaxAdapter
 
 
 # 模型前缀到供应商的映射
@@ -38,6 +39,7 @@ MODEL_PREFIX_TO_PROVIDER = {
     "ernie-": "ernie",
     "glm-": "zhipu",
     "minimax-": "minimax",
+    "MiniMax-": "minimax",
     # OpenRouter 模型格式: provider/model-name
     "openai/": "openrouter",
     "anthropic/": "openrouter",
@@ -89,6 +91,7 @@ def create_adapter(provider_name: str, base_url: str, api_key: str) -> BaseAdapt
         "qwen": QwenAdapter,
         "openrouter": OpenRouterAdapter,
         "zhipu": ZhipuAdapter,
+        "minimax": MiniMaxAdapter,
     }
 
     adapter_class = adapters.get(provider_name, OpenAIAdapter)

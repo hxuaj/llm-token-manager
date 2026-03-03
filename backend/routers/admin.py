@@ -557,6 +557,29 @@ async def update_provider(
     return provider_to_response(provider)
 
 
+@router.delete("/providers/{provider_id}", status_code=status.HTTP_200_OK)
+async def delete_provider(
+    provider_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """删除供应商（级联删除关联的 Key、定价和模型配置）"""
+    try:
+        provider_uuid = uuid.UUID(provider_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid provider ID")
+
+    result = await db.execute(select(Provider).where(Provider.id == provider_uuid))
+    provider = result.scalar_one_or_none()
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # 删除供应商（模型已配置级联删除，会自动删除关联的 Key、定价、模型）
+    await db.delete(provider)
+    await db.commit()
+    return {"message": "Provider deleted", "id": provider_id}
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 供应商 Key 管理接口
 # ─────────────────────────────────────────────────────────────────────

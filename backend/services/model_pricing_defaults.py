@@ -64,11 +64,47 @@ DEFAULT_MODEL_PRICING = {
         "supports_tools": True,
     },
     # ── MiniMax ──
-    "minimax-m2.5": {
+    "MiniMax-M2.5": {
         "display_name": "MiniMax M2.5",
         "input_price": 0.0000,
         "output_price": 0.0000,
-        "context_window": 1000000,
+        "context_window": 204800,
+        "max_output": 65536,
+        "supports_vision": False,
+        "supports_tools": True,
+    },
+    "MiniMax-M2.5-highspeed": {
+        "display_name": "MiniMax M2.5 Highspeed",
+        "input_price": 0.0000,
+        "output_price": 0.0000,
+        "context_window": 204800,
+        "max_output": 65536,
+        "supports_vision": False,
+        "supports_tools": True,
+    },
+    "MiniMax-M2.1": {
+        "display_name": "MiniMax M2.1",
+        "input_price": 0.0000,
+        "output_price": 0.0000,
+        "context_window": 204800,
+        "max_output": 65536,
+        "supports_vision": False,
+        "supports_tools": True,
+    },
+    "MiniMax-M2.1-highspeed": {
+        "display_name": "MiniMax M2.1 Highspeed",
+        "input_price": 0.0000,
+        "output_price": 0.0000,
+        "context_window": 204800,
+        "max_output": 65536,
+        "supports_vision": False,
+        "supports_tools": True,
+    },
+    "MiniMax-M2": {
+        "display_name": "MiniMax M2",
+        "input_price": 0.0000,
+        "output_price": 0.0000,
+        "context_window": 204800,
         "max_output": 65536,
         "supports_vision": False,
         "supports_tools": True,
@@ -81,17 +117,23 @@ CHAT_MODEL_PREFIXES = [
     "claude-",
     "glm-",
     "minimax-",
-    "qwen-",
+    "qwen",  # 匹配 qwen- 和 qwen3
     "ernie-",
     "deepseek-",
+    "gemini-",
+    "llama-",
+    "mistral-",
+    "phi-",
+    "yi-",
+    "chat-",  # 通用 chat 模型
+    "seed-",  # bytedance seed
 ]
 
 NON_CHAT_KEYWORDS = [
     "embedding", "embed",
     "tts", "whisper", "audio",
-    "dall-e", "image",
+    "dall-e",
     "moderation",
-    "instruct",
 ]
 
 
@@ -111,8 +153,12 @@ def is_chat_model(model_id: str) -> bool:
     if any(kw in model_lower for kw in NON_CHAT_KEYWORDS):
         return False
 
+    # 处理 OpenRouter 格式：provider/model-name
+    # 提取模型名称部分进行匹配
+    model_name = model_lower.split('/')[-1] if '/' in model_lower else model_lower
+
     # 检查聊天模型前缀
-    if any(model_lower.startswith(prefix) for prefix in CHAT_MODEL_PREFIXES):
+    if any(model_name.startswith(prefix) for prefix in CHAT_MODEL_PREFIXES):
         return True
 
     return False
