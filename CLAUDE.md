@@ -81,7 +81,8 @@ llm-token-manager/
 1. 先编写测试用例（可以先失败）
 2. 再编写实现代码
 3. 使用miniconda环境，运行 `cd backend && python -m pytest` 确认通过
-4. 提交代码
+4. 使用绝对路径测试代码，当前项目路径：/Users/hxuaj/Desktop/Work/projects/llm-token-manager-claude-glm5
+5. 提交代码
 
 **禁止**在没有对应测试的情况下提交任何 router 或 service 代码。
 
