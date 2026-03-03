@@ -28,11 +28,11 @@ from middleware.auth import get_user_by_api_key
 from services.proxy import (
     forward_request,
     forward_request_stream,
-    get_provider_name_by_model,
     get_available_models,
     get_provider_and_key,
     calculate_request_cost
 )
+from services.unified_router import get_unified_router
 from services.quota import (
     check_all_limits,
     QuotaExceededError,
@@ -43,6 +43,28 @@ from services.billing import log_request
 from services.key_selector import select_provider_key, NoAvailableKeyError
 
 router = APIRouter()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Backward compatible functions (for tests)
+# ─────────────────────────────────────────────────────────────────────
+
+def get_provider_name_by_model(model: str) -> Optional[str]:
+    """
+    根据模型名称确定供应商（向后兼容函数）
+
+    Args:
+        model: 模型名称
+
+    Returns:
+        供应商名称，如果无法确定则返回 None
+    """
+    try:
+        router = get_unified_router()
+        provider_name, _ = router.parse_model_string(model)
+        return provider_name
+    except ValueError:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -115,12 +137,14 @@ async def chat_completions(
     user, api_key = user_key
     start_time = time.time()
 
-    # 检查模型是否可用
-    provider_name = get_provider_name_by_model(request.model)
-    if not provider_name:
+    # 使用统一路由服务解析模型
+    router = get_unified_router()
+    try:
+        provider_name, model_id = router.parse_model_string(request.model)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown model: {request.model}"
+            detail=str(e)
         )
 
     # 检查所有限制（额度、RPM、模型白名单）

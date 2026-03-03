@@ -6,7 +6,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Boolean, DateTime, Text
+from sqlalchemy import String, Boolean, DateTime, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -17,6 +17,13 @@ class ApiFormat:
     """API 格式枚举"""
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    OPENAI_COMPATIBLE = "openai_compatible"
+
+
+class ProviderSource:
+    """供应商来源常量"""
+    MODELS_DEV = "models_dev"    # 从 models.dev 同步
+    CUSTOM = "custom"            # 用户自定义
 
 
 class Provider(Base):
@@ -34,6 +41,10 @@ class Provider(Base):
         nullable=False,
         index=True
     )
+    display_name: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True
+    )
     base_url: Mapped[str] = mapped_column(
         String(255),
         nullable=False
@@ -50,6 +61,31 @@ class Provider(Base):
     )
     config: Mapped[Optional[str]] = mapped_column(
         Text,  # JSON 配置
+        nullable=True
+    )
+    # SSOT 字段
+    source: Mapped[str] = mapped_column(
+        String(20),
+        default=ProviderSource.CUSTOM,
+        nullable=False
+    )
+    models_dev_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True
+    )
+    local_overrides: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=dict
+    )
+    supported_endpoints: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=list
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
         nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

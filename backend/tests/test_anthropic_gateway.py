@@ -536,17 +536,19 @@ async def test_quota_exceeded(client, test_user, db_session):
     from models.user_api_key import UserApiKey
     from models.monthly_usage import MonthlyUsage
     from decimal import Decimal
+    from datetime import datetime
     import uuid
 
     # 设置用户额度为 0
     test_user.monthly_quota_usd = Decimal("0.01")
     await db_session.commit()
 
-    # 创建月度用量记录（已用完）
+    # 创建月度用量记录（已用完）- 使用当前月份
+    current_month = datetime.utcnow().strftime("%Y-%m")
     usage = MonthlyUsage(
         id=uuid.uuid4(),
         user_id=test_user.id,
-        year_month="2026-02",
+        year_month=current_month,
         total_tokens=1000,
         total_cost_usd=Decimal("0.02"),  # 超过额度
         request_count=10

@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from decimal import Decimal
-from sqlalchemy import String, DateTime, Integer, Numeric, Boolean, ForeignKey, Text
+from sqlalchemy import String, DateTime, Integer, Numeric, Boolean, ForeignKey, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -19,6 +19,9 @@ class ModelStatus:
     PENDING = "pending"    # 待启用（新发现的模型）
     ACTIVE = "active"      # 已启用
     INACTIVE = "inactive"  # 已禁用
+    DEPRECATED = "deprecated"  # 已废弃
+    ALPHA = "alpha"        # 内测
+    BETA = "beta"          # 公测
 
 
 class ModelSource:
@@ -26,6 +29,7 @@ class ModelSource:
     AUTO_DISCOVERED = "auto_discovered"  # 自动发现
     MANUAL = "manual"                     # 手动添加
     BUILTIN_DEFAULT = "builtin_default"   # 内置默认定价
+    MODELS_DEV = "models_dev"             # 从 models.dev 同步
 
 
 class ModelCatalog(Base):
@@ -96,6 +100,12 @@ class ModelCatalog(Base):
         default=True,
         nullable=False
     )
+    # 扩展能力字段
+    supports_reasoning: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
     # 状态和来源
     status: Mapped[str] = mapped_column(
         String(20),
@@ -112,6 +122,38 @@ class ModelCatalog(Base):
         String(20),
         default=ModelSource.MANUAL,
         nullable=False
+    )
+    # SSOT 字段
+    models_dev_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True
+    )
+    base_config: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True
+    )
+    local_overrides: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=dict
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True
+    )
+    # 额外元数据
+    family: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True
+    )
+    knowledge_cutoff: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True
+    )
+    release_date: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

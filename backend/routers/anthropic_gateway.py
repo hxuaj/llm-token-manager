@@ -17,15 +17,16 @@ from models.user_api_key import UserApiKey
 from models.request_log import RequestStatus
 from middleware.auth import get_user_by_api_key
 from services.anthropic_proxy import (
-    resolve_provider,
-    get_provider_key,
     build_upstream_headers,
     proxy_request_non_stream,
     proxy_request_stream,
     extract_usage_from_response,
     extract_usage_from_sse_event,
     make_anthropic_error,
+    resolve_provider,
+    get_provider_key,
 )
+from services.unified_router import get_unified_router
 from services.quota import (
     check_all_limits,
     QuotaExceededError,
@@ -121,7 +122,32 @@ async def anthropic_messages(
             )
         )
 
-    # 路由到供应商
+    # 使用统一路由服务解析模型
+    router = get_unified_router()
+
+    # 解析模型和供应商
+    try:
+        provider_name, model_id = router.parse_model_string(model)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=make_anthropic_error(
+                "not_found_error",
+                str(e)
+            )
+        )
+
+    # 检查供应商是否支持 Anthropic 端点
+    if not router.supports_endpoint(provider_name, "anthropic"):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=make_anthropic_error(
+                "invalid_request_error",
+                f"Provider '{provider_name}' does not support Anthropic format"
+            )
+        )
+
+    # 获取供应商（使用 resolve_provider 保持向后兼容）
     try:
         provider = await resolve_provider(model, db)
     except ValueError as e:
