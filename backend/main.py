@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db, close_db
-from routers import auth, admin, admin_models, admin_usage, admin_model_limits, admin_pricing_history, user_keys, user, user_usage, gateway, anthropic_gateway
+from routers import auth, admin, admin_models, admin_usage, admin_model_limits, admin_pricing_history, user_keys, user, user_usage, gateway, anthropic_gateway, admin_provider_presets
 
 settings = get_settings()
 
@@ -82,6 +82,9 @@ app.include_router(user_usage.router, prefix="/api/user/usage", tags=["User Usag
 
 # 用户 Key 管理路由
 app.include_router(user_keys.router, prefix="/api/user/keys", tags=["User Keys"])
+
+# Admin 供应商预设路由（必须在 admin.router 之前注册，避免路由冲突）
+app.include_router(admin_provider_presets.router, prefix="/api/admin", tags=["Admin Provider Presets"])
 
 # Admin 管理路由
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])

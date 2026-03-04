@@ -3,7 +3,7 @@
 
 提供：
 - 请求日志记录
-- 费用计算
+- 费用计算（包含缓存 token 计费）
 - 月度统计更新
 """
 import uuid
@@ -16,6 +16,7 @@ from sqlalchemy import select
 from models.request_log import RequestLog, RequestStatus
 from models.monthly_usage import MonthlyUsage
 from models.model_pricing import ModelPricing
+from models.model_catalog import ModelCatalog
 from models.provider import Provider
 
 
@@ -23,7 +24,9 @@ async def calculate_cost(
     model: str,
     prompt_tokens: int,
     completion_tokens: int,
-    db: AsyncSession
+    db: AsyncSession,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0
 ) -> Decimal:
     """
     计算请求费用
@@ -33,11 +36,33 @@ async def calculate_cost(
         prompt_tokens: 输入 token 数
         completion_tokens: 输出 token 数
         db: 数据库 session
+        cache_read_tokens: 缓存读取 token 数（可选）
+        cache_write_tokens: 缓存写入 token 数（可选）
 
     Returns:
         费用（USD）
     """
-    # 查询模型定价
+    # 优先从 ModelCatalog 获取定价（包含缓存定价）
+    result = await db.execute(
+        select(ModelCatalog).where(ModelCatalog.model_id == model)
+    )
+    catalog = result.scalar_one_or_none()
+
+    if catalog:
+        # ModelCatalog 定价单位是 USD per 1M tokens
+        input_cost = Decimal(str(prompt_tokens)) * catalog.input_price / Decimal("1000000")
+        output_cost = Decimal(str(completion_tokens)) * catalog.output_price / Decimal("1000000")
+
+        # 计算缓存 token 费用
+        cache_cost = Decimal("0")
+        if cache_read_tokens > 0 and catalog.cache_read_price:
+            cache_cost += Decimal(str(cache_read_tokens)) * catalog.cache_read_price / Decimal("1000000")
+        if cache_write_tokens > 0 and catalog.cache_write_price:
+            cache_cost += Decimal(str(cache_write_tokens)) * catalog.cache_write_price / Decimal("1000000")
+
+        return input_cost + output_cost + cache_cost
+
+    # 回退到 ModelPricing（旧版定价表，不含缓存定价）
     result = await db.execute(
         select(ModelPricing).where(ModelPricing.model_name == model)
     )
@@ -47,8 +72,7 @@ async def calculate_cost(
         # 没有定价信息时返回 0
         return Decimal("0")
 
-    # 计算费用
-    # cost = (prompt_tokens * input_price_per_1k / 1000) + (completion_tokens * output_price_per_1k / 1000)
+    # ModelPricing 定价单位是 USD per 1K tokens
     input_cost = Decimal(str(prompt_tokens)) * pricing.input_price_per_1k / Decimal("1000")
     output_cost = Decimal(str(completion_tokens)) * pricing.output_price_per_1k / Decimal("1000")
 
@@ -68,6 +92,8 @@ async def log_request(
     cost_usd: Optional[Decimal] = None,
     input_tokens: Optional[int] = None,
     output_tokens: Optional[int] = None,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
     key_plan: str = "standard",
     db: AsyncSession = None
 ) -> RequestLog:
@@ -87,15 +113,21 @@ async def log_request(
         cost_usd: 费用（如果已计算，可传入；否则自动计算）
         input_tokens: 输入 token 数（新字段，与 prompt_tokens 同步）
         output_tokens: 输出 token 数（新字段，与 completion_tokens 同步）
+        cache_read_tokens: 缓存读取 token 数
+        cache_write_tokens: 缓存写入 token 数
         key_plan: Key 计划类型
         db: 数据库 session
 
     Returns:
         RequestLog 对象
     """
-    # 如果未传入费用，则计算
+    # 如果未传入费用，则计算（包含缓存计费）
     if cost_usd is None:
-        cost_usd = await calculate_cost(model, prompt_tokens, completion_tokens, db)
+        cost_usd = await calculate_cost(
+            model, prompt_tokens, completion_tokens, db,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens
+        )
 
     # 同步 token 字段
     if input_tokens is None:
@@ -117,6 +149,8 @@ async def log_request(
         total_tokens=prompt_tokens + completion_tokens,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
         cost_usd=cost_usd,
         latency_ms=latency_ms,
         status=status,

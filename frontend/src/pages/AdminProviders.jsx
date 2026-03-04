@@ -1,24 +1,32 @@
 /**
  * 管理员 - 供应商管理页面
+ *
+ * 支持两种创建模式：
+ * 1. 快捷创建：选择预设 -> 输入 API Key -> 验证并创建
+ * 2. 自定义创建：手动填写所有配置
  */
 import React, { useState, useEffect } from 'react'
 import {
   Table, Button, Modal, Form, Input, InputNumber, Switch, Select,
-  message, Tag, Space, Card, Typography, Popconfirm, Divider
+  message, Tag, Space, Card, Typography, Popconfirm, Divider, Steps,
+  Alert, Spin, List, Badge, Tooltip
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined,
-  CloudServerOutlined, DollarOutlined
+  CloudServerOutlined, DollarOutlined, CheckCircleOutlined,
+  CloseCircleOutlined, SyncOutlined, ApiOutlined
 } from '@ant-design/icons'
 import { adminProviderApi } from '../api'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 const { TextArea } = Input
+const { Step } = Steps
 
 export default function AdminProviders() {
   const [providers, setProviders] = useState([])
   const [loading, setLoading] = useState(true)
   const [providerModalVisible, setProviderModalVisible] = useState(false)
+  const [quickCreateModalVisible, setQuickCreateModalVisible] = useState(false)
   const [keyModalVisible, setKeyModalVisible] = useState(false)
   const [pricingModalVisible, setPricingModalVisible] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState(null)
@@ -27,6 +35,16 @@ export default function AdminProviders() {
   const [providerForm] = Form.useForm()
   const [keyForm] = Form.useForm()
   const [pricingForm] = Form.useForm()
+
+  // 快捷创建相关状态
+  const [presets, setPresets] = useState([])
+  const [presetsLoading, setPresetsLoading] = useState(false)
+  const [quickCreateForm] = Form.useForm()
+  const [currentStep, setCurrentStep] = useState(0)
+  const [validating, setValidating] = useState(false)
+  const [validationResult, setValidationResult] = useState(null)
+  const [creating, setCreating] = useState(false)
+  const [selectedPreset, setSelectedPreset] = useState(null)
 
   useEffect(() => {
     loadProviders()
@@ -41,6 +59,96 @@ export default function AdminProviders() {
       message.error('加载供应商列表失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadPresets = async () => {
+    setPresetsLoading(true)
+    try {
+      const response = await adminProviderApi.presets()
+      setPresets(response.data?.presets || [])
+    } catch (error) {
+      message.error('加载预设列表失败')
+    } finally {
+      setPresetsLoading(false)
+    }
+  }
+
+  // 打开快捷创建弹窗
+  const handleQuickCreate = () => {
+    setCurrentStep(0)
+    setValidationResult(null)
+    setSelectedPreset(null)
+    quickCreateForm.resetFields()
+    loadPresets()
+    setQuickCreateModalVisible(true)
+  }
+
+  // 选择预设
+  const handleSelectPreset = (presetId) => {
+    const preset = presets.find(p => p.id === presetId)
+    setSelectedPreset(preset)
+    if (preset) {
+      quickCreateForm.setFieldsValue({
+        custom_base_url: null
+      })
+    }
+  }
+
+  // 验证 API Key
+  const handleValidateKey = async () => {
+    try {
+      const values = await quickCreateForm.validateFields(['provider_preset', 'api_key', 'custom_base_url'])
+      setValidating(true)
+      setValidationResult(null)
+
+      const response = await adminProviderApi.validateKey({
+        provider_preset: values.provider_preset,
+        api_key: values.api_key,
+        custom_base_url: values.custom_base_url || null
+      })
+
+      setValidationResult(response.data)
+      if (response.data.valid) {
+        setCurrentStep(2)
+      }
+    } catch (error) {
+      if (error.response?.data?.detail) {
+        message.error(error.response.data.detail)
+      } else if (error.errorFields) {
+        // 表单验证错误，忽略
+      } else {
+        message.error('验证失败')
+      }
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  // 一键创建
+  const handleQuickCreateSubmit = async () => {
+    try {
+      const values = await quickCreateForm.validateFields()
+      setCreating(true)
+
+      const response = await adminProviderApi.quickCreate({
+        provider_preset: values.provider_preset,
+        api_key: values.api_key,
+        custom_base_url: values.custom_base_url || null,
+        auto_activate_models: true
+      })
+
+      message.success(`供应商创建成功！发现 ${response.data.discovery_result.total_models} 个模型，已激活 ${response.data.discovery_result.activated_models} 个`)
+      setQuickCreateModalVisible(false)
+      loadProviders()
+    } catch (error) {
+      if (error.response?.data?.detail) {
+        message.error(error.response.data.detail)
+      } else {
+        message.error('创建失败')
+      }
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -102,7 +210,6 @@ export default function AdminProviders() {
       await adminProviderApi.addKey(selectedProvider.id, values)
       message.success('添加成功')
       keyForm.resetFields()
-      // 刷新 Key 列表
       const response = await adminProviderApi.keys(selectedProvider.id)
       setProviderKeys(response.data || [])
     } catch (error) {
@@ -114,7 +221,6 @@ export default function AdminProviders() {
     try {
       await adminProviderApi.deleteKey(selectedProvider.id, keyId)
       message.success('删除成功')
-      // 刷新 Key 列表
       const response = await adminProviderApi.keys(selectedProvider.id)
       setProviderKeys(response.data || [])
     } catch (error) {
@@ -138,7 +244,6 @@ export default function AdminProviders() {
       await adminProviderApi.setPricing(selectedProvider.id, values)
       message.success('添加成功')
       pricingForm.resetFields()
-      // 刷新定价列表
       const response = await adminProviderApi.pricing(selectedProvider.id)
       setModelPricing(response.data || [])
     } catch (error) {
@@ -149,9 +254,16 @@ export default function AdminProviders() {
   const providerColumns = [
     {
       title: '供应商',
-      dataIndex: 'name',
-      key: 'name',
-      render: (name) => <Text strong>{name.toUpperCase()}</Text>,
+      dataIndex: 'display_name',
+      key: 'display_name',
+      render: (name, record) => (
+        <Space>
+          <Text strong>{name || record.name?.toUpperCase()}</Text>
+          {record.source === 'preset' && (
+            <Tag color="blue">预设</Tag>
+          )}
+        </Space>
+      ),
     },
     {
       title: '状态',
@@ -168,6 +280,17 @@ export default function AdminProviders() {
       dataIndex: 'base_url',
       key: 'base_url',
       ellipsis: true,
+    },
+    {
+      title: '支持端点',
+      dataIndex: 'supported_endpoints',
+      key: 'supported_endpoints',
+      render: (endpoints) => (
+        <Space>
+          {endpoints?.includes('openai') && <Tag>OpenAI</Tag>}
+          {endpoints?.includes('anthropic') && <Tag color="purple">Anthropic</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'Key 数量',
@@ -278,9 +401,14 @@ export default function AdminProviders() {
           <Title level={4} style={{ margin: 0 }}>
             <CloudServerOutlined /> 供应商管理
           </Title>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateProvider}>
-            添加供应商
-          </Button>
+          <Space>
+            <Button icon={<PlusOutlined />} onClick={handleCreateProvider}>
+              自定义创建
+            </Button>
+            <Button type="primary" icon={<ApiOutlined />} onClick={handleQuickCreate}>
+              快捷创建
+            </Button>
+          </Space>
         </div>
 
         <Table
@@ -292,9 +420,227 @@ export default function AdminProviders() {
         />
       </Card>
 
+      {/* 快捷创建弹窗 */}
+      <Modal
+        title="快捷创建供应商"
+        open={quickCreateModalVisible}
+        onCancel={() => setQuickCreateModalVisible(false)}
+        footer={null}
+        width={700}
+      >
+        <Steps current={currentStep} style={{ marginBottom: 24 }}>
+          <Step title="选择预设" description="选择供应商类型" />
+          <Step title="验证 Key" description="验证 API Key" />
+          <Step title="确认创建" description="创建供应商" />
+        </Steps>
+
+        <Form form={quickCreateForm} layout="vertical">
+          {/* Step 0: 选择预设 */}
+          {currentStep === 0 && (
+            <>
+              <Form.Item
+                name="provider_preset"
+                label="供应商类型"
+                rules={[{ required: true, message: '请选择供应商类型' }]}
+              >
+                <Select
+                  placeholder="选择供应商"
+                  loading={presetsLoading}
+                  onChange={handleSelectPreset}
+                  showSearch
+                  filterOption={(input, option) =>
+                    option.children?.toLowerCase().includes(input.toLowerCase())
+                  }
+                >
+                  {presets.map(preset => (
+                    <Select.Option key={preset.id} value={preset.id}>
+                      {preset.display_name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+
+              {selectedPreset && (
+                <Alert
+                  type="info"
+                  style={{ marginBottom: 16 }}
+                  message={
+                    <div>
+                      <Paragraph style={{ marginBottom: 8 }}>
+                        <Text strong>{selectedPreset.display_name}</Text>
+                      </Paragraph>
+                      <Paragraph style={{ marginBottom: 8 }}>
+                        {selectedPreset.description}
+                      </Paragraph>
+                      <Space>
+                        <Text type="secondary">支持端点:</Text>
+                        {selectedPreset.supported_endpoints?.map(ep => (
+                          <Tag key={ep} color={ep === 'anthropic' ? 'purple' : 'default'}>
+                            {ep.toUpperCase()}
+                          </Tag>
+                        ))}
+                      </Space>
+                    </div>
+                  }
+                />
+              )}
+
+              <Form.Item>
+                <Button
+                  type="primary"
+                  onClick={() => setCurrentStep(1)}
+                  disabled={!selectedPreset}
+                >
+                  下一步
+                </Button>
+              </Form.Item>
+            </>
+          )}
+
+          {/* Step 1: 输入并验证 API Key */}
+          {currentStep === 1 && (
+            <>
+              <Alert
+                type="info"
+                style={{ marginBottom: 16 }}
+                message={
+                  <div>
+                    <Text>供应商: <strong>{selectedPreset?.display_name}</strong></Text>
+                    <br />
+                    <Text type="secondary">默认 API 地址: {selectedPreset?.default_base_url}</Text>
+                  </div>
+                }
+              />
+
+              <Form.Item
+                name="api_key"
+                label="API Key"
+                rules={[{ required: true, message: '请输入 API Key' }]}
+              >
+                <Input.Password placeholder="输入供应商 API Key" />
+              </Form.Item>
+
+              <Form.Item
+                name="custom_base_url"
+                label="自定义 API 地址（可选）"
+                extra="留空使用默认地址"
+              >
+                <Input placeholder={selectedPreset?.default_base_url} />
+              </Form.Item>
+
+              <Form.Item>
+                <Space>
+                  <Button onClick={() => setCurrentStep(0)}>
+                    上一步
+                  </Button>
+                  <Button
+                    type="primary"
+                    onClick={handleValidateKey}
+                    loading={validating}
+                    icon={validating ? <SyncOutlined spin /> : null}
+                  >
+                    验证并发现模型
+                  </Button>
+                </Space>
+              </Form.Item>
+            </>
+          )}
+
+          {/* Step 2: 确认创建 */}
+          {currentStep === 2 && validationResult && (
+            <>
+              {validationResult.valid ? (
+                <>
+                  <Alert
+                    type="success"
+                    style={{ marginBottom: 16 }}
+                    message="验证成功"
+                    description={
+                      <div>
+                        <Text>发现 {validationResult.summary?.total_models || 0} 个可用模型</Text>
+                        <br />
+                        <Text type="secondary">
+                          定价已确认: {validationResult.summary?.pricing_confirmed || 0} 个，
+                          待配置: {validationResult.summary?.pricing_pending || 0} 个
+                        </Text>
+                      </div>
+                    }
+                  />
+
+                  {validationResult.discovered_models?.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <Title level={5}>发现的模型</Title>
+                      <List
+                        size="small"
+                        bordered
+                        dataSource={validationResult.discovered_models.slice(0, 10)}
+                        renderItem={model => (
+                          <List.Item>
+                            <Space>
+                              <Text>{model.display_name}</Text>
+                              <Tag>{model.model_id}</Tag>
+                              {model.pricing_source === 'models_dev' ? (
+                                <Tag color="green">定价已确认</Tag>
+                              ) : (
+                                <Tag color="orange">定价待配置</Tag>
+                              )}
+                            </Space>
+                          </List.Item>
+                        )}
+                        locale={{ emptyText: '暂无模型' }}
+                      />
+                      {validationResult.discovered_models.length > 10 && (
+                        <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
+                          还有 {validationResult.discovered_models.length - 10} 个模型...
+                        </Text>
+                      )}
+                    </div>
+                  )}
+
+                  <Form.Item>
+                    <Space>
+                      <Button onClick={() => {
+                        setCurrentStep(1)
+                        setValidationResult(null)
+                      }}>
+                        重新验证
+                      </Button>
+                      <Button
+                        type="primary"
+                        onClick={handleQuickCreateSubmit}
+                        loading={creating}
+                      >
+                        确认创建
+                      </Button>
+                    </Space>
+                  </Form.Item>
+                </>
+              ) : (
+                <>
+                  <Alert
+                    type="error"
+                    style={{ marginBottom: 16 }}
+                    message="验证失败"
+                    description={validationResult.error?.message || '未知错误'}
+                  />
+                  <Form.Item>
+                    <Button onClick={() => {
+                      setCurrentStep(1)
+                      setValidationResult(null)
+                    }}>
+                      返回修改
+                    </Button>
+                  </Form.Item>
+                </>
+              )}
+            </>
+          )}
+        </Form>
+      </Modal>
+
       {/* 供应商编辑弹窗 */}
       <Modal
-        title={selectedProvider ? '编辑供应商' : '添加供应商'}
+        title={selectedProvider ? '编辑供应商' : '自定义创建供应商'}
         open={providerModalVisible}
         onCancel={() => setProviderModalVisible(false)}
         footer={null}
@@ -305,22 +651,14 @@ export default function AdminProviders() {
             label="供应商名称"
             rules={[{ required: true, message: '请输入供应商名称' }]}
           >
-            <Select disabled={!!selectedProvider}>
-              <Select.Option value="openai">OpenAI</Select.Option>
-              <Select.Option value="anthropic">Anthropic</Select.Option>
-              <Select.Option value="qwen">通义千问</Select.Option>
-              <Select.Option value="ernie">文心一言</Select.Option>
-              <Select.Option value="zhipu">智谱 AI</Select.Option>
-              <Select.Option value="minimax">MiniMax</Select.Option>
-              <Select.Option value="openrouter">OpenRouter</Select.Option>
-            </Select>
+            <Input placeholder="例如: my-custom-provider" disabled={!!selectedProvider} />
           </Form.Item>
           <Form.Item
             name="base_url"
             label="API 地址"
             rules={[{ required: true, message: '请输入 API 地址' }]}
           >
-            <Input placeholder="https://api.openai.com/v1" />
+            <Input placeholder="https://api.example.com/v1" />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
             <Switch />
@@ -335,7 +673,7 @@ export default function AdminProviders() {
 
       {/* Key 管理弹窗 */}
       <Modal
-        title={`Key 管理 - ${selectedProvider?.name?.toUpperCase()}`}
+        title={`Key 管理 - ${selectedProvider?.display_name || selectedProvider?.name?.toUpperCase()}`}
         open={keyModalVisible}
         onCancel={() => {
           setKeyModalVisible(false)
@@ -379,7 +717,7 @@ export default function AdminProviders() {
 
       {/* 定价管理弹窗 */}
       <Modal
-        title={`模型定价 - ${selectedProvider?.name?.toUpperCase()}`}
+        title={`模型定价 - ${selectedProvider?.display_name || selectedProvider?.name?.toUpperCase()}`}
         open={pricingModalVisible}
         onCancel={() => {
           setPricingModalVisible(false)

@@ -137,6 +137,21 @@ export const adminProviderApi = {
   list: () => api.get('/api/admin/providers'),
 
   /**
+   * 获取供应商预设列表
+   */
+  presets: () => api.get('/api/admin/providers/presets'),
+
+  /**
+   * 验证 API Key 并发现模型
+   */
+  validateKey: (data) => api.post('/api/admin/providers/validate-key', data),
+
+  /**
+   * 一键创建供应商
+   */
+  quickCreate: (data) => api.post('/api/admin/providers/quick-create', data),
+
+  /**
    * 创建供应商
    */
   create: (data) => api.post('/api/admin/providers', data),
