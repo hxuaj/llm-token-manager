@@ -52,7 +52,7 @@ class TestProviderPresets:
         assert "openai" in preset_ids
         assert "anthropic" in preset_ids
         assert "zhipuai-coding-plan" in preset_ids
-        assert "minimax-coding-plan" in preset_ids
+        assert "minimax-cn-coding-plan" in preset_ids
         assert "openrouter" in preset_ids
 
     @pytest.mark.asyncio

@@ -67,15 +67,15 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
             "glm-4.5v",
         ],
     ),
-    "minimax-coding-plan": ProviderPreset(
-        id="minimax-coding-plan",
+    "minimax-cn-coding-plan": ProviderPreset(
+        id="minimax-cn-coding-plan",
         name="minimax",
-        display_name="MiniMax Coding Plan",
+        display_name="MiniMax Coding Plan (minimaxi.com)",
         api_format="openai_compatible",
-        default_base_url="https://api.minimax.io/anthropic/v1",
+        default_base_url="https://api.minimaxi.com/anthropic/v1",
         supported_endpoints=["openai", "anthropic"],
         supports_cache_pricing=True,
-        description="MiniMax Coding Plan 订阅，包含 MiniMax-M2.5, MiniMax-M2.1 等模型",
+        description="MiniMax Coding Plan 订阅（中国区），包含 MiniMax-M2.5, MiniMax-M2.1 等模型",
         is_coding_plan=True,
         coding_plan_models=[
             "MiniMax-M2.5",
