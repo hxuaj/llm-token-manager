@@ -168,21 +168,21 @@ async def test_route_to_anthropic(client, user_api_key):
 
 
 @pytest.mark.asyncio
-async def test_route_to_qwen(client, user_api_key):
-    """model='qwen-plus' - 请求转发到通义 mock"""
+async def test_route_to_openrouter(client, user_api_key):
+    """model='openai/gpt-4o' - 请求转发到 OpenRouter mock"""
     key_obj, raw_key = user_api_key
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
             with patch('routers.gateway.get_provider_and_key') as mock_get_key:
-                mock_provider.return_value = "qwen"
+                mock_provider.return_value = "openrouter"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {"id": "test", "choices": []}
 
                 await client.post(
                     "/v1/chat/completions",
                     json={
-                        "model": "qwen-plus",
+                        "model": "openai/gpt-4o",
                         "messages": [{"role": "user", "content": "Hello"}]
                     },
                     headers={"Authorization": f"Bearer {raw_key}"}

@@ -3,7 +3,7 @@
 
 提供标准供应商的配置预设，简化供应商创建流程。
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 
@@ -18,9 +18,12 @@ class ProviderPreset:
     supported_endpoints: List[str]  # ["openai"], ["openai", "anthropic"]
     supports_cache_pricing: bool = False
     description: str = ""
+    # Coding Plan 相关配置
+    is_coding_plan: bool = False  # 是否为 Coding Plan 类型
+    coding_plan_models: List[str] = field(default_factory=list)  # Coding Plan 支持的模型列表
 
 
-# 供应商预设列表
+# 供应商预设列表（精简为 5 个常用供应商）
 PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
     "openai": ProviderPreset(
         id="openai",
@@ -42,45 +45,44 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
         supports_cache_pricing=True,
         description="Claude 系列模型",
     ),
-    "zhipu": ProviderPreset(
-        id="zhipu",
+    "glm-coding-plan": ProviderPreset(
+        id="glm-coding-plan",
         name="zhipu",
-        display_name="智谱 AI",
+        display_name="GLM Coding Plan",
         api_format="openai_compatible",
-        default_base_url="https://open.bigmodel.cn/api/paas/v4",
+        default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
         supported_endpoints=["openai", "anthropic"],
-        supports_cache_pricing=False,
-        description="GLM 系列模型",
-    ),
-    "deepseek": ProviderPreset(
-        id="deepseek",
-        name="deepseek",
-        display_name="DeepSeek",
-        api_format="openai_compatible",
-        default_base_url="https://api.deepseek.com",
-        supported_endpoints=["openai"],
         supports_cache_pricing=True,
-        description="DeepSeek 系列，支持缓存 Token",
+        description="智谱 AI Coding Plan 订阅，包含 GLM-5, GLM-4.7, GLM-4.6 等模型",
+        is_coding_plan=True,
+        coding_plan_models=[
+            "glm-5",
+            "glm-4.7",
+            "glm-4.6",
+            "glm-4.5",
+            "glm-4.5-air",
+            "glm-4.5-flash",
+            "glm-4.6v",
+            "glm-4.6v-flash",
+            "glm-4.5v",
+        ],
     ),
-    "minimax": ProviderPreset(
-        id="minimax",
+    "minimax-coding-plan": ProviderPreset(
+        id="minimax-coding-plan",
         name="minimax",
-        display_name="MiniMax",
+        display_name="MiniMax Coding Plan",
         api_format="openai_compatible",
-        default_base_url="https://api.minimax.chat/v1",
+        default_base_url="https://api.minimax.io/anthropic/v1",
         supported_endpoints=["openai", "anthropic"],
-        supports_cache_pricing=False,
-        description="MiniMax 系列模型",
-    ),
-    "moonshot": ProviderPreset(
-        id="moonshot",
-        name="moonshot",
-        display_name="Moonshot",
-        api_format="openai_compatible",
-        default_base_url="https://api.moonshot.cn/v1",
-        supported_endpoints=["openai"],
-        supports_cache_pricing=False,
-        description="Kimi 系列模型",
+        supports_cache_pricing=True,
+        description="MiniMax Coding Plan 订阅，包含 MiniMax-M2.5, MiniMax-M2.1 等模型",
+        is_coding_plan=True,
+        coding_plan_models=[
+            "MiniMax-M2.5",
+            "MiniMax-M2.5-highspeed",
+            "MiniMax-M2.1",
+            "MiniMax-M2",
+        ],
     ),
     "openrouter": ProviderPreset(
         id="openrouter",
@@ -91,36 +93,6 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
         supported_endpoints=["openai"],
         supports_cache_pricing=False,
         description="聚合平台，支持多种模型",
-    ),
-    "qwen": ProviderPreset(
-        id="qwen",
-        name="qwen",
-        display_name="通义千问",
-        api_format="openai_compatible",
-        default_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        supported_endpoints=["openai"],
-        supports_cache_pricing=False,
-        description="阿里云通义千问系列",
-    ),
-    "google": ProviderPreset(
-        id="google",
-        name="google",
-        display_name="Google AI",
-        api_format="openai_compatible",
-        default_base_url="https://generativelanguage.googleapis.com/v1beta",
-        supported_endpoints=["openai"],
-        supports_cache_pricing=False,
-        description="Gemini 系列模型",
-    ),
-    "mistral": ProviderPreset(
-        id="mistral",
-        name="mistral",
-        display_name="Mistral",
-        api_format="openai_compatible",
-        default_base_url="https://api.mistral.ai/v1",
-        supported_endpoints=["openai"],
-        supports_cache_pricing=False,
-        description="Mistral 系列模型",
     ),
 }
 
@@ -147,4 +119,6 @@ def preset_to_dict(preset: ProviderPreset) -> dict:
         "supports_anthropic": "anthropic" in preset.supported_endpoints,
         "supports_cache_pricing": preset.supports_cache_pricing,
         "description": preset.description,
+        "is_coding_plan": preset.is_coding_plan,
+        "coding_plan_models": preset.coding_plan_models,
     }

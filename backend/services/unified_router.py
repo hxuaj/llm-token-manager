@@ -42,7 +42,7 @@ class UnifiedRouterService:
     提供统一的路由规则管理。
     """
 
-    # 统一的路由规则
+    # 统一的路由规则（精简为 5 个常用供应商）
     ROUTE_RULES: Dict[str, RouteRule] = {
         "openai": RouteRule(
             provider_name="openai",
@@ -64,28 +64,21 @@ class UnifiedRouterService:
             prefixes=["glm-"],
             api_format="openai_compatible",
             supported_endpoints=["openai", "anthropic"],
-            default_base_url="https://open.bigmodel.cn/api/paas/v4",
-        ),
-        "deepseek": RouteRule(
-            provider_name="deepseek",
-            prefixes=["deepseek-"],
-            api_format="openai_compatible",
-            supported_endpoints=["openai"],
-            default_base_url="https://api.deepseek.com",
+            default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
         ),
         "minimax": RouteRule(
             provider_name="minimax",
             prefixes=["minimax-", "MiniMax-"],
             api_format="openai_compatible",
             supported_endpoints=["openai", "anthropic"],
-            default_base_url="https://api.minimax.chat/v1",
+            default_base_url="https://api.minimax.io/anthropic/v1",
         ),
         "openrouter": RouteRule(
             provider_name="openrouter",
             prefixes=["openai/", "anthropic/", "google/", "meta-llama/",
                       "deepseek/", "mistralai/", "qwen/", "01-ai/",
                       "phind/", "codellama/", "nousresearch/", "x-ai/",
-                      "perplexity/"],
+                      "perplexity/", "z-ai/"],
             api_format="openai_compatible",
             supported_endpoints=["openai"],
             default_base_url="https://openrouter.ai/api/v1",
@@ -93,13 +86,6 @@ class UnifiedRouterService:
                 "HTTP-Referer": "https://ltm.example.com",
                 "X-Title": "LTM Gateway"
             },
-        ),
-        "qwen": RouteRule(
-            provider_name="qwen",
-            prefixes=["qwen-"],
-            api_format="openai_compatible",
-            supported_endpoints=["openai"],
-            default_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         ),
     }
 

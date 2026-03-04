@@ -161,48 +161,6 @@ class ZhipuLoader(BaseProviderLoader):
         return "zhipu"
 
 
-@register_loader("deepseek")
-class DeepSeekLoader(BaseProviderLoader):
-    """
-    DeepSeek Provider Loader
-
-    DeepSeek 使用标准的 OpenAI 兼容格式，
-    这里暂时不需要特殊处理，仅作为注册占位。
-    """
-
-    @property
-    def provider_name(self) -> str:
-        return "deepseek"
-
-
-@register_loader("qwen")
-class QwenLoader(BaseProviderLoader):
-    """
-    通义千问 Provider Loader
-
-    通义千问使用标准的 OpenAI 兼容格式，
-    这里暂时不需要特殊处理，仅作为注册占位。
-    """
-
-    @property
-    def provider_name(self) -> str:
-        return "qwen"
-
-
-@register_loader("moonshot")
-class MoonshotLoader(BaseProviderLoader):
-    """
-    Moonshot (Kimi) Provider Loader
-
-    Moonshot 使用标准的 OpenAI 兼容格式，
-    这里暂时不需要特殊处理，仅作为注册占位。
-    """
-
-    @property
-    def provider_name(self) -> str:
-        return "moonshot"
-
-
 @register_loader("minimax")
 class MiniMaxLoader(BaseProviderLoader):
     """

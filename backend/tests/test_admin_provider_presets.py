@@ -48,11 +48,12 @@ class TestProviderPresets:
         data = response.json()
         preset_ids = [p["id"] for p in data["presets"]]
 
-        # 验证包含主要供应商
+        # 验证包含主要供应商（精简为 5 个）
         assert "openai" in preset_ids
         assert "anthropic" in preset_ids
-        assert "zhipu" in preset_ids
-        assert "deepseek" in preset_ids
+        assert "glm-coding-plan" in preset_ids
+        assert "minimax-coding-plan" in preset_ids
+        assert "openrouter" in preset_ids
 
     @pytest.mark.asyncio
     async def test_get_presets_unauthorized(self, client):

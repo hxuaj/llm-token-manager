@@ -91,14 +91,6 @@ class TestUnifiedRouterParseModel:
         assert provider == "anthropic"
         assert model == "claude-sonnet-4"
 
-    def test_parse_model_deepseek(self):
-        """测试 DeepSeek 模型"""
-        router = UnifiedRouterService()
-
-        provider, model = router.parse_model_string("deepseek-chat")
-        assert provider == "deepseek"
-        assert model == "deepseek-chat"
-
     def test_parse_model_unknown(self):
         """测试未知模型"""
         router = UnifiedRouterService()
@@ -130,13 +122,6 @@ class TestUnifiedRouterEndpointSupport:
 
         assert router.supports_endpoint("zhipu", "openai") is True
         assert router.supports_endpoint("zhipu", "anthropic") is True
-
-    def test_supports_endpoint_deepseek(self):
-        """测试 DeepSeek 只支持 OpenAI 端点"""
-        router = UnifiedRouterService()
-
-        assert router.supports_endpoint("deepseek", "openai") is True
-        assert router.supports_endpoint("deepseek", "anthropic") is False
 
     def test_supports_endpoint_minimax(self):
         """测试 MiniMax 支持两种端点"""

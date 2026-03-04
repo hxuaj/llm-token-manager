@@ -43,11 +43,11 @@ class TestProviderLoaderRegistry:
         from services.provider_loaders import get_all_loaders
 
         loaders = get_all_loaders()
+        # 验证保留的 loaders（精简为 5 个供应商）
         assert "anthropic" in loaders
         assert "openrouter" in loaders
         assert "zhipu" in loaders
-        assert "deepseek" in loaders
-        assert "qwen" in loaders
+        assert "minimax" in loaders
 
 
 class TestAnthropicLoader:
@@ -182,26 +182,24 @@ class TestZhipuLoader:
         assert headers["Authorization"] == "Bearer zhipu-api-key"
 
 
-class TestDeepSeekLoader:
-    """测试 DeepSeek Loader"""
+class TestMiniMaxLoader:
+    """测试 MiniMax Loader"""
 
     def test_provider_name(self):
         """验证 provider 名称"""
         from services.provider_loaders import get_loader
 
-        loader = get_loader("deepseek")
-        assert loader.provider_name == "deepseek"
+        loader = get_loader("minimax")
+        assert loader.provider_name == "minimax"
 
-
-class TestQwenLoader:
-    """测试通义千问 Loader"""
-
-    def test_provider_name(self):
-        """验证 provider 名称"""
+    def test_auth_headers_uses_bearer(self):
+        """测试认证头使用 Bearer token"""
         from services.provider_loaders import get_loader
 
-        loader = get_loader("qwen")
-        assert loader.provider_name == "qwen"
+        loader = get_loader("minimax")
+        headers = loader.get_auth_headers("minimax-api-key")
+
+        assert headers["Authorization"] == "Bearer minimax-api-key"
 
 
 class TestBaseProviderLoader:
@@ -211,8 +209,8 @@ class TestBaseProviderLoader:
         """默认不修改请求体"""
         from services.provider_loaders import get_loader
 
-        loader = get_loader("deepseek")  # 使用一个没有特殊处理的 loader
-        original_body = {"model": "deepseek-chat", "messages": []}
+        loader = get_loader("zhipu")  # 使用一个没有特殊处理的 loader
+        original_body = {"model": "glm-4", "messages": []}
         modified_body = loader.modify_request_body(original_body)
 
         assert modified_body == original_body
@@ -221,7 +219,7 @@ class TestBaseProviderLoader:
         """默认返回空字典"""
         from services.provider_loaders import get_loader
 
-        loader = get_loader("deepseek")
+        loader = get_loader("zhipu")
         headers = loader.get_extra_headers({}, None)
 
         assert headers == {}
