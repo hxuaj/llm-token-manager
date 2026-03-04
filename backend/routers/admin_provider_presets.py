@@ -10,6 +10,7 @@ import logging
 from decimal import Decimal
 from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
 from middleware.auth import get_current_admin_user
 from services.encryption import encrypt, extract_key_suffix
-from services.model_discovery import get_discovery_service, UnsupportedDiscoveryError, DiscoveryUpstreamError
+from services.model_discovery import UnsupportedDiscoveryError, DiscoveryUpstreamError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -123,7 +124,7 @@ async def validate_provider_key(
     2. 调用供应商的 /models 端点获取模型列表
     3. 从 models.dev 获取定价信息（如果可用）
     """
-    from services.provider_presets import get_preset
+    from services.provider_presets import get_preset, get_models_dev_id
     from services.models_dev_service import get_models_dev_service
 
     # 获取预设
@@ -133,6 +134,9 @@ async def validate_provider_key(
             valid=False,
             error={"type": "invalid_preset", "message": f"Unknown preset: {data.provider_preset}"}
         )
+
+    # 获取 models.dev 供应商 ID
+    models_dev_provider_id = get_models_dev_id(preset)
 
     # 确定使用的 base_url
     base_url = data.custom_base_url or preset.default_base_url
@@ -194,7 +198,7 @@ async def validate_provider_key(
             cache_write_price = model.get("cache_write_price")
 
             try:
-                dev_model = await models_dev.get_model(preset.name, model_id)
+                dev_model = await models_dev.get_model(models_dev_provider_id, model_id)
                 if dev_model:
                     cost = dev_model.get("cost", {})
                     if cost:
@@ -271,13 +275,16 @@ async def quick_create_provider(
     2. 添加 API Key
     3. 发现并激活模型
     """
-    from services.provider_presets import get_preset
+    from services.provider_presets import get_preset, get_models_dev_id
     from services.models_dev_service import get_models_dev_service
 
     # 获取预设
     preset = get_preset(data.provider_preset)
     if not preset:
         raise HTTPException(status_code=400, detail=f"Unknown preset: {data.provider_preset}")
+
+    # 获取 models.dev 供应商 ID
+    models_dev_provider_id = get_models_dev_id(preset)
 
     # 检查供应商是否已存在
     result = await db.execute(select(Provider).where(Provider.name == preset.name))
@@ -323,32 +330,61 @@ async def quick_create_provider(
     pricing_confirmed = 0
 
     try:
-        discovery_service = get_discovery_service(preset.name, base_url)
-        models = await discovery_service.discover_models(data.api_key, db)
-        total_models = len(models)
+        # 直接调用供应商 API 获取模型列表
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if preset.api_format == "anthropic":
+                response = await client.get(
+                    f"{base_url}/v1/models",
+                    headers={
+                        "x-api-key": data.api_key,
+                        "anthropic-version": "2023-06-01"
+                    }
+                )
+            else:
+                response = await client.get(
+                    f"{base_url}/models",
+                    headers={
+                        "Authorization": f"Bearer {data.api_key}"
+                    }
+                )
 
+            response.raise_for_status()
+            result = response.json()
+
+        # 解析模型列表
+        raw_models = result.get("data", result.get("models", []))
+        if isinstance(raw_models, dict):
+            raw_models = [{"id": k, **v} for k, v in raw_models.items()]
+
+        total_models = len(raw_models)
         models_dev = get_models_dev_service()
 
-        for model in models:
-            model_id = model.get("model_id", model.get("id", ""))
+        for m in raw_models:
+            model_id = m.get("id", m.get("model_id", ""))
+            if not model_id:
+                continue
 
-            # 获取定价
-            input_price = model.get("input_price", Decimal("0"))
-            output_price = model.get("output_price", Decimal("0"))
-            cache_read_price = model.get("cache_read_price")
-            cache_write_price = model.get("cache_write_price")
+            display_name = m.get("name", m.get("display_name", model_id))
+
+            # 获取定价（从 models.dev）
+            input_price = Decimal("0")
+            output_price = Decimal("0")
+            cache_read_price = None
+            cache_write_price = None
+            is_pricing_confirmed = False
 
             try:
-                dev_model = await models_dev.get_model(preset.name, model_id)
+                dev_model = await models_dev.get_model(models_dev_provider_id, model_id)
                 if dev_model:
                     cost = dev_model.get("cost", {})
-                    if cost:
-                        input_price = Decimal(str(cost.get("input", input_price)))
-                        output_price = Decimal(str(cost.get("output", output_price)))
+                    if cost and (cost.get("input", 0) > 0 or cost.get("output", 0) > 0):
+                        input_price = Decimal(str(cost.get("input", 0)))
+                        output_price = Decimal(str(cost.get("output", 0)))
                         if cost.get("cache_read"):
                             cache_read_price = Decimal(str(cost["cache_read"]))
                         if cost.get("cache_write"):
                             cache_write_price = Decimal(str(cost["cache_write"]))
+                        is_pricing_confirmed = True
                         pricing_confirmed += 1
             except Exception:
                 pass
@@ -359,18 +395,19 @@ async def quick_create_provider(
 
                 catalog = ModelCatalog(
                     model_id=model_id,
-                    display_name=model.get("display_name", model_id),
+                    display_name=display_name,
                     provider_id=provider.id,
                     input_price=input_price,
                     output_price=output_price,
                     cache_read_price=cache_read_price,
                     cache_write_price=cache_write_price,
-                    context_window=model.get("context_window"),
-                    supports_vision=model.get("supports_vision", False),
-                    supports_tools=model.get("supports_tools", True),
+                    context_window=m.get("context_window"),
+                    supports_vision=m.get("supports_vision", False),
+                    supports_tools=m.get("supports_tools", True),
                     status=ModelStatus.ACTIVE,
                     source=ModelSource.AUTO_DISCOVERED,
                     models_dev_id=model_id,
+                    is_pricing_confirmed=is_pricing_confirmed,
                 )
                 db.add(catalog)
                 activated_models += 1

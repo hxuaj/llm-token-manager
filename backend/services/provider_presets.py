@@ -21,6 +21,9 @@ class ProviderPreset:
     # Coding Plan 相关配置
     is_coding_plan: bool = False  # 是否为 Coding Plan 类型
     coding_plan_models: List[str] = field(default_factory=list)  # Coding Plan 支持的模型列表
+    # models.dev 中的供应商 ID（用于获取定价信息）
+    # 如果为 None，则使用 name 字段
+    models_dev_id: Optional[str] = None
 
 
 # 供应商预设列表（精简为 5 个常用供应商）
@@ -66,6 +69,8 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
             "glm-4.6v-flash",
             "glm-4.5v",
         ],
+        # Coding Plan 定价在 models.dev 中是 0，使用标准定价作为参考
+        models_dev_id="zhipuai",
     ),
     "minimax-cn-coding-plan": ProviderPreset(
         id="minimax-cn-coding-plan",
@@ -121,4 +126,10 @@ def preset_to_dict(preset: ProviderPreset) -> dict:
         "description": preset.description,
         "is_coding_plan": preset.is_coding_plan,
         "coding_plan_models": preset.coding_plan_models,
+        "models_dev_id": preset.models_dev_id or preset.name,
     }
+
+
+def get_models_dev_id(preset: ProviderPreset) -> str:
+    """获取预设对应的 models.dev 供应商 ID"""
+    return preset.models_dev_id or preset.name

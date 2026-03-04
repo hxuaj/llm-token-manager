@@ -16,7 +16,7 @@ import {
   CloudServerOutlined, DollarOutlined, CheckCircleOutlined,
   CloseCircleOutlined, SyncOutlined, ApiOutlined
 } from '@ant-design/icons'
-import { adminProviderApi } from '../api'
+import { adminProviderApi, adminModelApi } from '../api'
 
 const { Title, Text, Paragraph } = Typography
 const { TextArea } = Input
@@ -45,6 +45,10 @@ export default function AdminProviders() {
   const [validationResult, setValidationResult] = useState(null)
   const [creating, setCreating] = useState(false)
   const [selectedPreset, setSelectedPreset] = useState(null)
+
+  // 模型目录相关状态
+  const [providerModels, setProviderModels] = useState([])
+  const [modelsLoading, setModelsLoading] = useState(false)
 
   useEffect(() => {
     loadProviders()
@@ -230,24 +234,50 @@ export default function AdminProviders() {
 
   const handleManagePricing = async (record) => {
     setSelectedProvider(record)
+    setModelsLoading(true)
     try {
-      const response = await adminProviderApi.pricing(record.id)
-      setModelPricing(response.data || [])
+      // 加载模型目录（包含定价信息）
+      const modelsResponse = await adminModelApi.list(record.id)
+      const models = modelsResponse.data?.models || []
+      setProviderModels(models)
+      // 直接使用模型目录数据作为定价数据
+      setModelPricing(models.filter(m => m.status === 'active' || m.status === 'pending'))
+
       setPricingModalVisible(true)
     } catch (error) {
-      message.error('加载定价列表失败')
+      message.error('加载数据失败')
+    } finally {
+      setModelsLoading(false)
     }
   }
 
-  const handleAddPricing = async (values) => {
+  const handleModelSelect = (modelId) => {
+    const selectedModel = providerModels.find(m => m.model_id === modelId)
+    if (selectedModel) {
+      // 定价单位已经是 USD/1M tokens，直接使用
+      pricingForm.setFieldsValue({
+        input_price: selectedModel.input_price || 0,
+        output_price: selectedModel.output_price || 0
+      })
+    }
+  }
+
+  const handleUpdatePricing = async (values) => {
     try {
-      await adminProviderApi.setPricing(selectedProvider.id, values)
-      message.success('添加成功')
+      // 使用模型 ID 更新定价
+      await adminModelApi.updatePricing(values.model_id, {
+        input_price: values.input_price,
+        output_price: values.output_price
+      })
+      message.success('定价更新成功')
       pricingForm.resetFields()
-      const response = await adminProviderApi.pricing(selectedProvider.id)
-      setModelPricing(response.data || [])
+      // 重新加载模型列表
+      const modelsResponse = await adminModelApi.list(selectedProvider.id)
+      const models = modelsResponse.data?.models || []
+      setProviderModels(models)
+      setModelPricing(models.filter(m => m.status === 'active' || m.status === 'pending'))
     } catch (error) {
-      message.error('添加失败')
+      message.error('更新失败')
     }
   }
 
@@ -376,21 +406,37 @@ export default function AdminProviders() {
 
   const pricingColumns = [
     {
-      title: '模型名称',
-      dataIndex: 'model_name',
-      key: 'model_name',
+      title: '模型 ID',
+      dataIndex: 'model_id',
+      key: 'model_id',
+      render: (id, record) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{record.display_name}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{id}</Text>
+        </Space>
+      ),
     },
     {
-      title: '输入价格 ($/1K tokens)',
-      dataIndex: 'input_price_per_1k',
-      key: 'input_price_per_1k',
-      render: (price) => `$${parseFloat(price || 0).toFixed(6)}`,
+      title: '输入价格 ($/1M tokens)',
+      dataIndex: 'input_price',
+      key: 'input_price',
+      render: (price) => `$${parseFloat(price || 0).toFixed(4)}`,
     },
     {
-      title: '输出价格 ($/1K tokens)',
-      dataIndex: 'output_price_per_1k',
-      key: 'output_price_per_1k',
-      render: (price) => `$${parseFloat(price || 0).toFixed(6)}`,
+      title: '输出价格 ($/1M tokens)',
+      dataIndex: 'output_price',
+      key: 'output_price',
+      render: (price) => `$${parseFloat(price || 0).toFixed(4)}`,
+    },
+    {
+      title: '定价来源',
+      dataIndex: 'is_pricing_confirmed',
+      key: 'is_pricing_confirmed',
+      render: (confirmed) => (
+        <Tag color={confirmed ? 'green' : 'orange'}>
+          {confirmed ? '已确认' : '待配置'}
+        </Tag>
+      ),
     },
   ]
 
@@ -436,115 +482,111 @@ export default function AdminProviders() {
 
         <Form form={quickCreateForm} layout="vertical">
           {/* Step 0: 选择预设 */}
-          {currentStep === 0 && (
-            <>
-              <Form.Item
-                name="provider_preset"
-                label="供应商类型"
-                rules={[{ required: true, message: '请选择供应商类型' }]}
+          <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+            <Form.Item
+              name="provider_preset"
+              label="供应商类型"
+              rules={[{ required: true, message: '请选择供应商类型' }]}
+            >
+              <Select
+                placeholder="选择供应商"
+                loading={presetsLoading}
+                onChange={handleSelectPreset}
+                showSearch
+                filterOption={(input, option) =>
+                  option.children?.toLowerCase().includes(input.toLowerCase())
+                }
               >
-                <Select
-                  placeholder="选择供应商"
-                  loading={presetsLoading}
-                  onChange={handleSelectPreset}
-                  showSearch
-                  filterOption={(input, option) =>
-                    option.children?.toLowerCase().includes(input.toLowerCase())
-                  }
-                >
-                  {presets.map(preset => (
-                    <Select.Option key={preset.id} value={preset.id}>
-                      {preset.display_name}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
+                {presets.map(preset => (
+                  <Select.Option key={preset.id} value={preset.id}>
+                    {preset.display_name}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
 
-              {selectedPreset && (
-                <Alert
-                  type="info"
-                  style={{ marginBottom: 16 }}
-                  message={
-                    <div>
-                      <Paragraph style={{ marginBottom: 8 }}>
-                        <Text strong>{selectedPreset.display_name}</Text>
-                      </Paragraph>
-                      <Paragraph style={{ marginBottom: 8 }}>
-                        {selectedPreset.description}
-                      </Paragraph>
-                      <Space>
-                        <Text type="secondary">支持端点:</Text>
-                        {selectedPreset.supported_endpoints?.map(ep => (
-                          <Tag key={ep} color={ep === 'anthropic' ? 'purple' : 'default'}>
-                            {ep.toUpperCase()}
-                          </Tag>
-                        ))}
-                      </Space>
-                    </div>
-                  }
-                />
-              )}
-
-              <Form.Item>
-                <Button
-                  type="primary"
-                  onClick={() => setCurrentStep(1)}
-                  disabled={!selectedPreset}
-                >
-                  下一步
-                </Button>
-              </Form.Item>
-            </>
-          )}
-
-          {/* Step 1: 输入并验证 API Key */}
-          {currentStep === 1 && (
-            <>
+            {selectedPreset && (
               <Alert
                 type="info"
                 style={{ marginBottom: 16 }}
                 message={
                   <div>
-                    <Text>供应商: <strong>{selectedPreset?.display_name}</strong></Text>
-                    <br />
-                    <Text type="secondary">默认 API 地址: {selectedPreset?.default_base_url}</Text>
+                    <Paragraph style={{ marginBottom: 8 }}>
+                      <Text strong>{selectedPreset.display_name}</Text>
+                    </Paragraph>
+                    <Paragraph style={{ marginBottom: 8 }}>
+                      {selectedPreset.description}
+                    </Paragraph>
+                    <Space>
+                      <Text type="secondary">支持端点:</Text>
+                      {selectedPreset.supported_endpoints?.map(ep => (
+                        <Tag key={ep} color={ep === 'anthropic' ? 'purple' : 'default'}>
+                          {ep.toUpperCase()}
+                        </Tag>
+                      ))}
+                    </Space>
                   </div>
                 }
               />
+            )}
 
-              <Form.Item
-                name="api_key"
-                label="API Key"
-                rules={[{ required: true, message: '请输入 API Key' }]}
+            <Form.Item>
+              <Button
+                type="primary"
+                onClick={() => setCurrentStep(1)}
+                disabled={!selectedPreset}
               >
-                <Input.Password placeholder="输入供应商 API Key" />
-              </Form.Item>
+                下一步
+              </Button>
+            </Form.Item>
+          </div>
 
-              <Form.Item
-                name="custom_base_url"
-                label="自定义 API 地址（可选）"
-                extra="留空使用默认地址"
-              >
-                <Input placeholder={selectedPreset?.default_base_url} />
-              </Form.Item>
+          {/* Step 1: 输入并验证 API Key */}
+          <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+            <Alert
+              type="info"
+              style={{ marginBottom: 16 }}
+              message={
+                <div>
+                  <Text>供应商: <strong>{selectedPreset?.display_name}</strong></Text>
+                  <br />
+                  <Text type="secondary">默认 API 地址: {selectedPreset?.default_base_url}</Text>
+                </div>
+              }
+            />
 
-              <Form.Item>
-                <Space>
-                  <Button onClick={() => setCurrentStep(0)}>
-                    上一步
-                  </Button>
-                  <Button
-                    type="primary"
-                    onClick={handleValidateKey}
-                    loading={validating}
-                    icon={validating ? <SyncOutlined spin /> : null}
-                  >
-                    验证并发现模型
-                  </Button>
-                </Space>
-              </Form.Item>
-            </>
-          )}
+            <Form.Item
+              name="api_key"
+              label="API Key"
+              rules={[{ required: true, message: '请输入 API Key' }]}
+            >
+              <Input.Password placeholder="输入供应商 API Key" />
+            </Form.Item>
+
+            <Form.Item
+              name="custom_base_url"
+              label="自定义 API 地址（可选）"
+              extra="留空使用默认地址"
+            >
+              <Input placeholder={selectedPreset?.default_base_url} />
+            </Form.Item>
+
+            <Form.Item>
+              <Space>
+                <Button onClick={() => setCurrentStep(0)}>
+                  上一步
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={handleValidateKey}
+                  loading={validating}
+                  icon={validating ? <SyncOutlined spin /> : null}
+                >
+                  验证并发现模型
+                </Button>
+              </Space>
+            </Form.Item>
+          </div>
 
           {/* Step 2: 确认创建 */}
           {currentStep === 2 && validationResult && (
@@ -722,34 +764,52 @@ export default function AdminProviders() {
         onCancel={() => {
           setPricingModalVisible(false)
           pricingForm.resetFields()
+          setProviderModels([])
         }}
         footer={null}
-        width={700}
+        width={800}
       >
         <div style={{ marginBottom: 24 }}>
-          <Title level={5}>添加模型定价</Title>
-          <Form form={pricingForm} onFinish={handleAddPricing} layout="inline">
+          <Title level={5}>更新模型定价</Title>
+          <Form form={pricingForm} onFinish={handleUpdatePricing} layout="inline">
             <Form.Item
-              name="model_name"
-              rules={[{ required: true, message: '请输入模型名称' }]}
+              name="model_id"
+              rules={[{ required: true, message: '请选择模型' }]}
             >
-              <Input placeholder="模型名称，如 gpt-4o" style={{ width: 150 }} />
+              <Select
+                placeholder="选择模型"
+                style={{ width: 250 }}
+                loading={modelsLoading}
+                showSearch
+                filterOption={(input, option) => {
+                  const label = option.children?.toString().toLowerCase() || ''
+                  const value = option.value?.toLowerCase() || ''
+                  return label.includes(input.toLowerCase()) || value.includes(input.toLowerCase())
+                }}
+                onChange={handleModelSelect}
+              >
+                {providerModels.map(model => (
+                  <Select.Option key={model.id} value={model.model_id}>
+                    {model.display_name} ({model.model_id})
+                  </Select.Option>
+                ))}
+              </Select>
             </Form.Item>
             <Form.Item
-              name="input_price_per_1k"
+              name="input_price"
               rules={[{ required: true, message: '请输入价格' }]}
             >
-              <InputNumber placeholder="输入价格" min={0} step={0.001} />
+              <InputNumber placeholder="输入价格 ($/1M)" min={0} step={0.01} style={{ width: 140 }} />
             </Form.Item>
             <Form.Item
-              name="output_price_per_1k"
+              name="output_price"
               rules={[{ required: true, message: '请输入价格' }]}
             >
-              <InputNumber placeholder="输出价格" min={0} step={0.001} />
+              <InputNumber placeholder="输出价格 ($/1M)" min={0} step={0.01} style={{ width: 140 }} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit">
-                添加
+                更新
               </Button>
             </Form.Item>
           </Form>
@@ -757,7 +817,7 @@ export default function AdminProviders() {
 
         <Divider />
 
-        <Title level={5}>已有定价</Title>
+        <Title level={5}>模型列表</Title>
         <Table
           columns={pricingColumns}
           dataSource={modelPricing}
