@@ -33,6 +33,7 @@ from services.quota import (
     RateLimitedError
 )
 from services.billing import log_request
+from services.model_status import check_model_deprecation
 
 router = APIRouter()
 
@@ -181,19 +182,26 @@ async def anthropic_messages(
     # 判断是否流式请求
     is_stream = body.get("stream", False)
 
+    # 检查模型是否废弃
+    is_deprecated = await check_model_deprecation(model, db)
+
     try:
         if is_stream:
             # 流式响应
+            stream_headers = {
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+            if is_deprecated:
+                stream_headers["X-Model-Deprecated"] = "true"
+
             return StreamingResponse(
                 stream_response_generator(
                     upstream_url, upstream_headers, body_bytes,
                     user, api_key, model, db, start_time
                 ),
                 media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
+                headers=stream_headers
             )
         else:
             # 非流式响应
@@ -219,9 +227,15 @@ async def anthropic_messages(
                 db=db
             )
 
+            # 构建响应头
+            response_headers = {}
+            if is_deprecated:
+                response_headers["X-Model-Deprecated"] = "true"
+
             return JSONResponse(
                 status_code=response.status_code,
-                content=response_body
+                content=response_body,
+                headers=response_headers if response_headers else None
             )
 
     except Exception as e:

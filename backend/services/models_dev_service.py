@@ -330,6 +330,17 @@ class ModelsDevService:
                     model.context_window = context_window
                     needs_update = True
 
+            # 更新 capabilities 字段
+            if capabilities and "capabilities" not in local_overrides:
+                model.capabilities = capabilities
+                # 同时更新旧的能力字段以保持兼容
+                if capabilities.get("reasoning") is not None and "supports_reasoning" not in local_overrides:
+                    model.supports_reasoning = capabilities.get("reasoning", False)
+                if capabilities.get("input", {}).get("image") is not None and "supports_vision" not in local_overrides:
+                    model.supports_vision = capabilities.get("input", {}).get("image", False)
+                if capabilities.get("toolcall") is not None and "supports_tools" not in local_overrides:
+                    model.supports_tools = capabilities.get("toolcall", True)
+
             # 检测冲突：本地值与远程值不同
             if "input_price" in local_overrides:
                 remote_input = input_price
@@ -357,9 +368,11 @@ class ModelsDevService:
                 cache_write_price=cache_write_price,
                 context_window=limit.get("context"),
                 max_output=limit.get("output"),
-                supports_vision=capabilities.get("vision", False),
-                supports_tools=capabilities.get("tools", True),
+                supports_vision=capabilities.get("input", {}).get("image", capabilities.get("vision", False)),
+                supports_tools=capabilities.get("toolcall", capabilities.get("tools", True)),
                 supports_streaming=True,
+                supports_reasoning=capabilities.get("reasoning", False),
+                capabilities=capabilities if capabilities else None,
                 status=ModelStatus.PENDING,
                 source=ModelSource.AUTO_DISCOVERED,
                 models_dev_id=model_id,

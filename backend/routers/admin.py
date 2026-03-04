@@ -1246,3 +1246,109 @@ async def quick_create_provider(
             "pricing_confirmed": pricing_confirmed,
         }
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 配置热重载接口
+# ─────────────────────────────────────────────────────────────────────
+
+class ConfigReloadResponse(BaseModel):
+    """配置重载响应"""
+    success: bool
+    message: str
+    providers_count: Optional[int] = None
+    reloaded_at: Optional[str] = None
+
+
+class ModelsSyncRequest(BaseModel):
+    """模型同步请求"""
+    force_refresh: bool = False
+    provider_id: Optional[str] = None
+
+
+class ModelsSyncResponse(BaseModel):
+    """模型同步响应"""
+    success: bool
+    synced_at: str
+    providers_synced: int = 0
+    models_synced: int = 0
+    new_models: int = 0
+    updated_models: int = 0
+    preserved_local: int = 0
+    conflicts: List[dict] = []
+    error: Optional[str] = None
+
+
+@router.post("/config/reload", response_model=ConfigReloadResponse)
+async def reload_config(
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    重载供应商配置
+
+    触发重新加载供应商和模型配置（从数据库重新读取）
+    """
+    from datetime import datetime
+    from services.unified_router import get_unified_router
+
+    try:
+        router = get_unified_router()
+
+        # 统计供应商数量
+        result = await db.execute(select(func.count()).select_from(Provider))
+        providers_count = result.scalar() or 0
+
+        # 清除路由器缓存（如果有）
+        if hasattr(router, '_providers_cache'):
+            router._providers_cache = None
+
+        return ConfigReloadResponse(
+            success=True,
+            message="Configuration reloaded successfully",
+            providers_count=providers_count,
+            reloaded_at=datetime.utcnow().isoformat()
+        )
+    except Exception as e:
+        logger.error(f"Failed to reload config: {e}")
+        return ConfigReloadResponse(
+            success=False,
+            message=f"Failed to reload config: {str(e)}"
+        )
+
+
+@router.post("/models/sync", response_model=ModelsSyncResponse)
+async def sync_models_from_models_dev(
+    request: ModelsSyncRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    从 models.dev 同步模型数据
+
+    支持：
+    - force_refresh: 强制刷新缓存
+    - provider_id: 只同步指定供应商
+    """
+    from datetime import datetime
+    from services.models_dev_service import get_models_dev_service
+
+    service = get_models_dev_service()
+
+    result = await service.sync_to_database(
+        db,
+        provider_id=request.provider_id,
+        force_refresh=request.force_refresh
+    )
+
+    return ModelsSyncResponse(
+        success=result.success,
+        synced_at=result.synced_at.isoformat(),
+        providers_synced=result.providers_synced,
+        models_synced=result.models_synced,
+        new_models=result.new_models,
+        updated_models=result.updated_models,
+        preserved_local=result.preserved_local,
+        conflicts=result.conflicts,
+        error=result.error
+    )

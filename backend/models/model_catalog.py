@@ -106,6 +106,11 @@ class ModelCatalog(Base):
         default=False,
         nullable=False
     )
+    # 完整能力结构（来自 models.dev）
+    capabilities: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True
+    )
     # 状态和来源
     status: Mapped[str] = mapped_column(
         String(20),
