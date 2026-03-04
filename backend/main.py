@@ -2,8 +2,10 @@
 LLM Token Manager - FastAPI 应用入口
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from config import get_settings
 from database import init_db, close_db
@@ -28,6 +30,49 @@ app = FastAPI(
     version="1.1.0",
     lifespan=lifespan,
 )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 异常处理器 - 将 Pydantic 验证错误转换为友好格式
+# ─────────────────────────────────────────────────────────────────────
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    将 FastAPI 的 422 验证错误转换为友好的字符串格式
+
+    Pydantic v2 默认返回:
+    {"detail": [{"type": "...", "loc": [...], "msg": "...", ...}]}
+
+    转换为:
+    {"detail": "字段 xxx: 错误信息"}
+    """
+    errors = exc.errors()
+    if not errors:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "请求参数验证失败"}
+        )
+
+    # 将所有错误合并为友好的字符串
+    error_messages = []
+    for error in errors:
+        loc = error.get("loc", [])
+        msg = error.get("msg", "验证失败")
+
+        # 提取字段名（跳过 "body" 前缀）
+        field_parts = [str(part) for part in loc if part != "body"]
+        field_name = ".".join(field_parts) if field_parts else "未知字段"
+
+        error_messages.append(f"{field_name}: {msg}")
+
+    detail = "; ".join(error_messages)
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": detail}
+    )
+
 
 # CORS 配置
 app.add_middleware(
