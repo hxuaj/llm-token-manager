@@ -58,6 +58,32 @@ class ModelCatalogService:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_models_by_provider_models_dev_id(
+        db: AsyncSession,
+        models_dev_id: str
+    ) -> List[ModelCatalog]:
+        """
+        根据供应商的 models_dev_id 获取模型列表
+
+        这是模型数据的**主要查询方法**，用于从本地 ModelCatalog 获取指定供应商的模型。
+        models_dev_id 对应 models.dev 中的供应商 ID，如 "openai", "anthropic", "minimax", "zhipuai"。
+
+        Args:
+            db: 数据库 session
+            models_dev_id: 供应商在 models.dev 中的 ID
+
+        Returns:
+            该供应商下的所有模型列表
+        """
+        result = await db.execute(
+            select(ModelCatalog)
+            .join(Provider, ModelCatalog.provider_id == Provider.id)
+            .where(Provider.models_dev_id == models_dev_id)
+            .order_by(ModelCatalog.model_id)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
     async def get_model_by_id(
         db: AsyncSession,
         model_id: str

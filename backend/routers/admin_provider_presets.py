@@ -4,13 +4,16 @@
 提供供应商预设、验证和快捷创建功能。
 注意：这个路由文件需要注册在 admin.router 之前，
 否则 /providers/presets 会被 /providers/{provider_id} 匹配。
+
+核心原则：
+- 本地 ModelCatalog 是模型数据的单一真相来源（SSOT）
+- API 发现作为可选补充方法
 """
 import uuid
 import logging
 from decimal import Decimal
 from typing import List, Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +23,10 @@ from database import get_db
 from models.user import User
 from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
+from models.model_catalog import ModelCatalog, ModelStatus, ModelSource
 from middleware.auth import get_current_admin_user
 from services.encryption import encrypt, extract_key_suffix
-from services.model_discovery import UnsupportedDiscoveryError, DiscoveryUpstreamError
+from services.model_catalog_service import ModelCatalogService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,6 +54,8 @@ class ValidateKeyRequest(BaseModel):
     provider_preset: str
     api_key: str
     custom_base_url: Optional[str] = None
+    validate_api: bool = False  # 是否验证 API Key（默认不验证）
+    discover_from_api: bool = False  # 是否从 API 发现模型（默认不从 API 发现）
 
 
 class DiscoveredModel(BaseModel):
@@ -60,11 +66,12 @@ class DiscoveredModel(BaseModel):
     output_price: float
     cache_read_price: Optional[float] = None
     cache_write_price: Optional[float] = None
-    pricing_source: str  # "models_dev", "builtin", "unknown"
+    pricing_source: str  # "catalog", "api", "catalog+api"
     context_window: Optional[int] = None
     supports_vision: bool = False
     supports_tools: bool = True
     supports_reasoning: bool = False
+    from_api: bool = False  # 是否来自 API 发现
 
 
 class ValidateKeyResponse(BaseModel):
@@ -73,6 +80,8 @@ class ValidateKeyResponse(BaseModel):
     provider_preset: Optional[str] = None
     auto_config: Optional[dict] = None
     discovered_models: Optional[List[DiscoveredModel]] = None
+    models_source: Optional[str] = None  # "catalog", "api", "catalog+api"
+    api_validation: Optional[dict] = None  # API 验证结果
     summary: Optional[dict] = None
     error: Optional[dict] = None
 
@@ -85,6 +94,8 @@ class QuickCreateRequest(BaseModel):
     rpm_limit: Optional[int] = None
     custom_base_url: Optional[str] = None
     auto_activate_models: bool = True
+    validate_api: bool = False  # 是否验证 API Key
+    discover_from_api: bool = False  # 是否从 API 发现模型
 
 
 class QuickCreateResponse(BaseModel):
@@ -118,16 +129,28 @@ async def validate_provider_key(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    验证 API Key 并发现可用模型
+    验证 API Key 并获取可用模型
 
+    新流程（本地 ModelCatalog 优先）：
     1. 验证预设是否存在
-    2. 调用供应商的 /models 端点获取模型列表
-    3. 从 models.dev 获取定价信息（如果可用）
+    2. **优先**从本地 ModelCatalog 获取该供应商的模型
+    3. **可选**：调用 API 验证 Key 有效性
+    4. **可选**：从 API 发现补充模型
+    5. 返回合并后的模型列表
+
+    Args:
+        data: 请求参数
+            - provider_preset: 供应商预设 ID
+            - api_key: API Key
+            - custom_base_url: 自定义 base URL
+            - validate_api: 是否验证 API Key（默认 False）
+            - discover_from_api: 是否从 API 发现模型（默认 False）
     """
     from services.provider_presets import get_preset, get_models_dev_id
-    from services.models_dev_service import get_models_dev_service
+    from services.api_validator import validate_api_key, ValidationResult
+    from services.api_discovery import discover_models_from_api, DiscoveredModelInfo
 
-    # 获取预设
+    # 1. 获取预设
     preset = get_preset(data.provider_preset)
     if not preset:
         return ValidateKeyResponse(
@@ -141,125 +164,118 @@ async def validate_provider_key(
     # 确定使用的 base_url
     base_url = data.custom_base_url or preset.default_base_url
 
-    try:
-        # 直接调用供应商的 /models 端点获取模型列表
-        import httpx
+    # 2. 从本地 ModelCatalog 获取模型（主要数据源）
+    catalog_models = await ModelCatalogService.get_models_by_provider_models_dev_id(
+        db, models_dev_provider_id
+    )
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if preset.api_format == "anthropic":
-                # Anthropic 格式
-                response = await client.get(
-                    f"{base_url}/v1/models",
-                    headers={
-                        "x-api-key": data.api_key,
-                        "anthropic-version": "2023-06-01"
-                    }
-                )
-            else:
-                # OpenAI 格式
-                response = await client.get(
-                    f"{base_url}/models",
-                    headers={
-                        "Authorization": f"Bearer {data.api_key}"
-                    }
-                )
+    # 转换为响应格式
+    discovered_models = []
+    catalog_model_ids = set()
+    pricing_confirmed = 0
+    pricing_pending = 0
 
-            response.raise_for_status()
-            result = response.json()
+    for model in catalog_models:
+        catalog_model_ids.add(model.model_id)
+        is_pricing_confirmed = model.is_pricing_confirmed and model.input_price > 0
 
-        # 解析模型列表
-        raw_models = result.get("data", result.get("models", []))
-        if isinstance(raw_models, dict):
-            raw_models = [{"id": k, **v} for k, v in raw_models.items()]
+        if is_pricing_confirmed:
+            pricing_confirmed += 1
+        else:
+            pricing_pending += 1
 
-        models = []
-        for m in raw_models:
-            model_id = m.get("id", m.get("model_id", ""))
-            if model_id:
-                models.append({
-                    "model_id": model_id,
-                    "display_name": m.get("name", m.get("display_name", model_id)),
-                })
+        discovered_models.append(DiscoveredModel(
+            model_id=model.model_id,
+            display_name=model.display_name,
+            input_price=float(model.input_price),
+            output_price=float(model.output_price),
+            cache_read_price=float(model.cache_read_price) if model.cache_read_price else None,
+            cache_write_price=float(model.cache_write_price) if model.cache_write_price else None,
+            pricing_source="catalog",
+            context_window=model.context_window,
+            supports_vision=model.supports_vision,
+            supports_tools=model.supports_tools,
+            supports_reasoning=model.supports_reasoning,
+            from_api=False,
+        ))
 
-        # 获取 models.dev 定价信息
-        models_dev = get_models_dev_service()
-        discovered_models = []
-        pricing_confirmed = 0
-        pricing_pending = 0
+    models_source = "catalog"
+    api_validation_result = None
 
-        for model in models:
-            model_id = model.get("model_id", model.get("id", ""))
+    # 3. 可选：验证 API Key
+    if data.validate_api:
+        validation_result = await validate_api_key(preset, data.api_key, base_url)
+        api_validation_result = {
+            "performed": True,
+            "valid": validation_result.valid,
+            "error_type": validation_result.error_type,
+            "error_message": validation_result.error_message,
+        }
 
-            # 尝试从 models.dev 获取定价
-            pricing_source = "unknown"
-            input_price = model.get("input_price", 0)
-            output_price = model.get("output_price", 0)
-            cache_read_price = model.get("cache_read_price")
-            cache_write_price = model.get("cache_write_price")
+        if not validation_result.valid:
+            # API 验证失败，但仍然返回本地模型数据
+            # 只是标记验证结果
+            pass
 
-            try:
-                dev_model = await models_dev.get_model(models_dev_provider_id, model_id)
-                if dev_model:
-                    cost = dev_model.get("cost", {})
-                    if cost:
-                        input_price = cost.get("input", input_price)
-                        output_price = cost.get("output", output_price)
-                        cache_read_price = cost.get("cache_read", cache_read_price)
-                        cache_write_price = cost.get("cache_write", cache_write_price)
-                        pricing_source = "models_dev"
-                        pricing_confirmed += 1
-            except Exception:
-                pass
+    # 4. 可选：从 API 发现补充模型
+    if data.discover_from_api:
+        discovery_result = await discover_models_from_api(preset, data.api_key, base_url)
 
-            if pricing_source == "unknown":
-                pricing_pending += 1
+        if discovery_result.success:
+            # 合并 API 发现的模型
+            api_model_ids = set()
+            for api_model in discovery_result.models:
+                api_model_ids.add(api_model.model_id)
 
-            discovered_models.append(DiscoveredModel(
-                model_id=model_id,
-                display_name=model.get("display_name", model_id),
-                input_price=input_price,
-                output_price=output_price,
-                cache_read_price=cache_read_price,
-                cache_write_price=cache_write_price,
-                pricing_source=pricing_source,
-                context_window=model.get("context_window"),
-                supports_vision=model.get("supports_vision", False),
-                supports_tools=model.get("supports_tools", True),
-                supports_reasoning=model.get("supports_reasoning", False),
-            ))
+                if api_model.model_id not in catalog_model_ids:
+                    # 新模型，添加到列表
+                    pricing_pending += 1
+                    discovered_models.append(DiscoveredModel(
+                        model_id=api_model.model_id,
+                        display_name=api_model.display_name,
+                        input_price=float(api_model.input_price),
+                        output_price=float(api_model.output_price),
+                        cache_read_price=float(api_model.cache_read_price) if api_model.cache_read_price else None,
+                        cache_write_price=float(api_model.cache_write_price) if api_model.cache_write_price else None,
+                        pricing_source="api",
+                        context_window=api_model.context_window,
+                        supports_vision=api_model.supports_vision,
+                        supports_tools=api_model.supports_tools,
+                        supports_reasoning=api_model.supports_reasoning,
+                        from_api=True,
+                    ))
+                else:
+                    # 已存在于 catalog，标记为合并来源
+                    for dm in discovered_models:
+                        if dm.model_id == api_model.model_id:
+                            dm.pricing_source = "catalog+api"
+                            break
 
-        return ValidateKeyResponse(
-            valid=True,
-            provider_preset=data.provider_preset,
-            auto_config={
-                "base_url": base_url,
-                "api_format": preset.api_format,
-                "supported_endpoints": preset.supported_endpoints,
-            },
-            discovered_models=discovered_models,
-            summary={
-                "total_models": len(discovered_models),
-                "pricing_confirmed": pricing_confirmed,
-                "pricing_pending": pricing_pending,
-            }
-        )
+            # 更新来源标识
+            if api_model_ids:
+                models_source = "catalog+api" if catalog_models else "api"
+        else:
+            # API 发现失败，记录错误但不影响整体响应
+            logger.warning(f"API discovery failed: {discovery_result.error_message}")
 
-    except UnsupportedDiscoveryError as e:
-        return ValidateKeyResponse(
-            valid=False,
-            error={"type": "unsupported", "message": str(e)}
-        )
-    except DiscoveryUpstreamError as e:
-        return ValidateKeyResponse(
-            valid=False,
-            error={"type": "invalid_api_key", "message": "API Key 无效或已过期"}
-        )
-    except Exception as e:
-        logger.error(f"Key validation failed: {e}")
-        return ValidateKeyResponse(
-            valid=False,
-            error={"type": "validation_error", "message": str(e)[:200]}
-        )
+    return ValidateKeyResponse(
+        valid=True,
+        provider_preset=data.provider_preset,
+        auto_config={
+            "base_url": base_url,
+            "api_format": preset.api_format,
+            "supported_endpoints": preset.supported_endpoints,
+        },
+        discovered_models=discovered_models,
+        models_source=models_source,
+        api_validation=api_validation_result,
+        summary={
+            "total_models": len(discovered_models),
+            "catalog_models": len(catalog_models),
+            "pricing_confirmed": pricing_confirmed,
+            "pricing_pending": pricing_pending,
+        }
+    )
 
 
 @router.post("/providers/quick-create", response_model=QuickCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -271,14 +287,28 @@ async def quick_create_provider(
     """
     一键创建供应商
 
-    1. 创建供应商记录
-    2. 添加 API Key
-    3. 发现并激活模型
+    新流程（本地 ModelCatalog 优先）：
+    1. 创建供应商记录（设置 models_dev_id）
+    2. 创建 API Key 记录
+    3. **优先**从本地 ModelCatalog 获取模型
+    4. **可选**：从 API 发现补充模型
+    5. 创建 ModelCatalog 记录（关联到新供应商）
+
+    Args:
+        data: 请求参数
+            - provider_preset: 供应商预设 ID
+            - api_key: API Key
+            - key_plan: Key 计划类型
+            - rpm_limit: RPM 限制
+            - custom_base_url: 自定义 base URL
+            - auto_activate_models: 是否自动激活模型
+            - validate_api: 是否验证 API Key
+            - discover_from_api: 是否从 API 发现模型
     """
     from services.provider_presets import get_preset, get_models_dev_id
-    from services.models_dev_service import get_models_dev_service
+    from services.api_discovery import discover_models_from_api
 
-    # 获取预设
+    # 1. 获取预设
     preset = get_preset(data.provider_preset)
     if not preset:
         raise HTTPException(status_code=400, detail=f"Unknown preset: {data.provider_preset}")
@@ -286,7 +316,7 @@ async def quick_create_provider(
     # 获取 models.dev 供应商 ID
     models_dev_provider_id = get_models_dev_id(preset)
 
-    # 检查供应商是否已存在
+    # 2. 检查供应商是否已存在
     result = await db.execute(select(Provider).where(Provider.name == preset.name))
     existing_provider = result.scalar_one_or_none()
     if existing_provider:
@@ -295,7 +325,7 @@ async def quick_create_provider(
     # 确定使用的 base_url
     base_url = data.custom_base_url or preset.default_base_url
 
-    # 创建供应商
+    # 3. 创建供应商
     provider = Provider(
         name=preset.name,
         display_name=preset.display_name,
@@ -303,13 +333,13 @@ async def quick_create_provider(
         api_format=preset.api_format,
         enabled=True,
         source="preset",
-        models_dev_id=preset.name,
+        models_dev_id=models_dev_provider_id,  # 设置 models_dev_id 以便查询
         supported_endpoints=preset.supported_endpoints,
     )
     db.add(provider)
     await db.flush()  # 获取 provider.id
 
-    # 创建 API Key
+    # 4. 创建 API Key
     encrypted_key = encrypt(data.api_key)
     key_suffix = extract_key_suffix(data.api_key)
 
@@ -324,96 +354,92 @@ async def quick_create_provider(
     db.add(provider_key)
     await db.flush()
 
-    # 发现模型
+    # 5. 获取模型（优先本地，可选 API 补充）
     total_models = 0
     activated_models = 0
     pricing_confirmed = 0
+    models_source = "none"
 
-    try:
-        # 直接调用供应商 API 获取模型列表
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            if preset.api_format == "anthropic":
-                response = await client.get(
-                    f"{base_url}/v1/models",
-                    headers={
-                        "x-api-key": data.api_key,
-                        "anthropic-version": "2023-06-01"
-                    }
-                )
-            else:
-                response = await client.get(
-                    f"{base_url}/models",
-                    headers={
-                        "Authorization": f"Bearer {data.api_key}"
-                    }
-                )
+    # 5.1 从本地 ModelCatalog 获取该供应商的模型
+    catalog_models = await ModelCatalogService.get_models_by_provider_models_dev_id(
+        db, models_dev_provider_id
+    )
 
-            response.raise_for_status()
-            result = response.json()
-
-        # 解析模型列表
-        raw_models = result.get("data", result.get("models", []))
-        if isinstance(raw_models, dict):
-            raw_models = [{"id": k, **v} for k, v in raw_models.items()]
-
-        total_models = len(raw_models)
-        models_dev = get_models_dev_service()
-
-        for m in raw_models:
-            model_id = m.get("id", m.get("model_id", ""))
-            if not model_id:
+    # 为新供应商创建模型记录
+    if catalog_models:
+        models_source = "catalog"
+        for model in catalog_models:
+            # 检查是否已存在（避免重复）
+            existing = await db.execute(
+                select(ModelCatalog).where(ModelCatalog.model_id == model.model_id)
+            )
+            if existing.scalar_one_or_none():
                 continue
 
-            display_name = m.get("name", m.get("display_name", model_id))
-
-            # 获取定价（从 models.dev）
-            input_price = Decimal("0")
-            output_price = Decimal("0")
-            cache_read_price = None
-            cache_write_price = None
-            is_pricing_confirmed = False
-
-            try:
-                dev_model = await models_dev.get_model(models_dev_provider_id, model_id)
-                if dev_model:
-                    cost = dev_model.get("cost", {})
-                    if cost and (cost.get("input", 0) > 0 or cost.get("output", 0) > 0):
-                        input_price = Decimal(str(cost.get("input", 0)))
-                        output_price = Decimal(str(cost.get("output", 0)))
-                        if cost.get("cache_read"):
-                            cache_read_price = Decimal(str(cost["cache_read"]))
-                        if cost.get("cache_write"):
-                            cache_write_price = Decimal(str(cost["cache_write"]))
-                        is_pricing_confirmed = True
-                        pricing_confirmed += 1
-            except Exception:
-                pass
-
-            # 创建模型目录记录（如果自动激活）
+            new_model = ModelCatalog(
+                model_id=model.model_id,
+                display_name=model.display_name,
+                provider_id=provider.id,
+                input_price=model.input_price,
+                output_price=model.output_price,
+                cache_read_price=model.cache_read_price,
+                cache_write_price=model.cache_write_price,
+                context_window=model.context_window,
+                max_output=model.max_output,
+                supports_vision=model.supports_vision,
+                supports_tools=model.supports_tools,
+                supports_reasoning=model.supports_reasoning,
+                status=ModelStatus.ACTIVE if data.auto_activate_models else ModelStatus.PENDING,
+                source=ModelSource.MODELS_DEV,
+                models_dev_id=model.model_id,
+                is_pricing_confirmed=model.is_pricing_confirmed,
+            )
+            db.add(new_model)
+            total_models += 1
             if data.auto_activate_models:
-                from models.model_catalog import ModelCatalog, ModelStatus, ModelSource
-
-                catalog = ModelCatalog(
-                    model_id=model_id,
-                    display_name=display_name,
-                    provider_id=provider.id,
-                    input_price=input_price,
-                    output_price=output_price,
-                    cache_read_price=cache_read_price,
-                    cache_write_price=cache_write_price,
-                    context_window=m.get("context_window"),
-                    supports_vision=m.get("supports_vision", False),
-                    supports_tools=m.get("supports_tools", True),
-                    status=ModelStatus.ACTIVE,
-                    source=ModelSource.AUTO_DISCOVERED,
-                    models_dev_id=model_id,
-                    is_pricing_confirmed=is_pricing_confirmed,
-                )
-                db.add(catalog)
                 activated_models += 1
+            if model.is_pricing_confirmed:
+                pricing_confirmed += 1
 
-    except Exception as e:
-        logger.warning(f"Model discovery failed: {e}")
+    # 5.2 可选：从 API 发现补充模型
+    if data.discover_from_api:
+        discovery_result = await discover_models_from_api(preset, data.api_key, base_url)
+
+        if discovery_result.success:
+            for api_model in discovery_result.models:
+                # 检查是否已存在
+                existing = await db.execute(
+                    select(ModelCatalog).where(ModelCatalog.model_id == api_model.model_id)
+                )
+                if existing.scalar_one_or_none():
+                    continue
+
+                new_model = ModelCatalog(
+                    model_id=api_model.model_id,
+                    display_name=api_model.display_name,
+                    provider_id=provider.id,
+                    input_price=api_model.input_price,
+                    output_price=api_model.output_price,
+                    cache_read_price=api_model.cache_read_price,
+                    cache_write_price=api_model.cache_write_price,
+                    context_window=api_model.context_window,
+                    supports_vision=api_model.supports_vision,
+                    supports_tools=api_model.supports_tools,
+                    supports_reasoning=api_model.supports_reasoning,
+                    status=ModelStatus.ACTIVE if data.auto_activate_models else ModelStatus.PENDING,
+                    source=ModelSource.AUTO_DISCOVERED,
+                    models_dev_id=api_model.model_id,
+                    is_pricing_confirmed=False,  # API 发现的模型默认未确认定价
+                )
+                db.add(new_model)
+                total_models += 1
+                if data.auto_activate_models:
+                    activated_models += 1
+
+            if discovery_result.models:
+                models_source = "catalog+api" if catalog_models else "api"
+        else:
+            logger.warning(f"API discovery failed during quick-create: {discovery_result.error_message}")
 
     await db.commit()
     await db.refresh(provider)
@@ -436,5 +462,6 @@ async def quick_create_provider(
             "total_models": total_models,
             "activated_models": activated_models,
             "pricing_confirmed": pricing_confirmed,
+            "models_source": models_source,
         }
     )

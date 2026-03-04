@@ -3,11 +3,12 @@
 
 测试用例：
 - 获取预设列表
-- 验证 API Key
-- 一键创建供应商
+- 验证 API Key（新流程：本地 ModelCatalog 优先）
+- 一键创建供应商（新流程：本地 ModelCatalog 优先）
 """
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from decimal import Decimal
 import uuid
 
 
@@ -63,126 +64,307 @@ class TestProviderPresets:
 
 
 class TestValidateApiKey:
-    """测试 API Key 验证接口"""
+    """测试 API Key 验证接口（新流程）"""
 
     @pytest.mark.asyncio
-    async def test_validate_key_success(self, client, admin_token):
-        """验证 Key 成功"""
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_response = MagicMock()
-            mock_response.json.return_value = {
-                "data": [
-                    {"id": "gpt-4o", "name": "GPT-4o"},
-                    {"id": "gpt-4o-mini", "name": "GPT-4o Mini"}
-                ]
-            }
-            mock_response.raise_for_status = MagicMock()
+    async def test_validate_key_default_no_api_call(self, client, admin_token, db_session):
+        """默认行为：不从本地 ModelCatalog 获取，不调用 API"""
+        # 默认情况下 validate_api=False, discover_from_api=False
+        # 如果本地没有数据，应该返回空模型列表但 valid=True
 
-            mock_instance = AsyncMock()
-            mock_instance.__aenter__.return_value = mock_instance
-            mock_instance.get.return_value = mock_response
-            mock_client.return_value = mock_instance
+        response = await client.post(
+            "/api/admin/providers/validate-key",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "provider_preset": "openai",
+                "api_key": "sk-test-key-12345"
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is True
+        assert data["models_source"] == "catalog"
+        # 本地没有 openai 供应商的数据，所以模型列表为空
+        assert data["discovered_models"] == []
+
+    @pytest.mark.asyncio
+    async def test_validate_key_with_local_catalog_data(self, client, admin_token, db_session):
+        """从本地 ModelCatalog 获取模型（默认行为）"""
+        from models.provider import Provider
+        from models.model_catalog import ModelCatalog, ModelStatus, ModelSource
+
+        # 创建供应商
+        provider = Provider(
+            id=uuid.uuid4(),
+            name="openai",
+            display_name="OpenAI",
+            base_url="https://api.openai.com/v1",
+            api_format="openai",
+            enabled=True,
+            models_dev_id="openai",
+        )
+        db_session.add(provider)
+        await db_session.flush()
+
+        # 创建模型
+        model = ModelCatalog(
+            id=uuid.uuid4(),
+            model_id="gpt-4o",
+            display_name="GPT-4o",
+            provider_id=provider.id,
+            input_price=Decimal("2.5"),
+            output_price=Decimal("10.0"),
+            status=ModelStatus.ACTIVE,
+            source=ModelSource.MODELS_DEV,
+            is_pricing_confirmed=True,
+        )
+        db_session.add(model)
+        await db_session.commit()
+
+        # 调用接口
+        response = await client.post(
+            "/api/admin/providers/validate-key",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "provider_preset": "openai",
+                "api_key": "sk-test-key-12345"
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is True
+        assert data["models_source"] == "catalog"
+        assert len(data["discovered_models"]) == 1
+        assert data["discovered_models"][0]["model_id"] == "gpt-4o"
+        assert data["discovered_models"][0]["pricing_source"] == "catalog"
+        assert data["summary"]["catalog_models"] == 1
+
+    @pytest.mark.asyncio
+    async def test_validate_key_with_api_validation(self, client, admin_token, db_session):
+        """使用 validate_api=True 验证 API Key"""
+        with patch('services.api_validator.validate_api_key') as mock_validate:
+            mock_validate.return_value = MagicMock(
+                valid=True,
+                error_type=None,
+                error_message=None
+            )
 
             response = await client.post(
                 "/api/admin/providers/validate-key",
                 headers={"Authorization": f"Bearer {admin_token}"},
                 json={
                     "provider_preset": "openai",
-                    "api_key": "sk-test-key-12345"
+                    "api_key": "sk-test-key-12345",
+                    "validate_api": True
                 }
             )
 
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is True
-        assert "discovered_models" in data
-        assert len(data["discovered_models"]) > 0
+        assert data["api_validation"] is not None
+        assert data["api_validation"]["performed"] is True
+        assert data["api_validation"]["valid"] is True
 
     @pytest.mark.asyncio
-    async def test_validate_key_invalid(self, client, admin_token):
-        """验证无效 Key"""
-        import httpx
-
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_instance = AsyncMock()
-            mock_instance.__aenter__.return_value = mock_instance
-            mock_instance.get.side_effect = httpx.HTTPStatusError(
-                "401 Unauthorized",
-                request=MagicMock(),
-                response=MagicMock(status_code=401)
+    async def test_validate_key_with_api_validation_failed(self, client, admin_token, db_session):
+        """API 验证失败但仍然返回本地数据"""
+        with patch('services.api_validator.validate_api_key') as mock_validate:
+            mock_validate.return_value = MagicMock(
+                valid=False,
+                error_type="invalid_key",
+                error_message="API Key 无效或已过期"
             )
-            mock_client.return_value = mock_instance
 
             response = await client.post(
                 "/api/admin/providers/validate-key",
                 headers={"Authorization": f"Bearer {admin_token}"},
                 json={
                     "provider_preset": "openai",
-                    "api_key": "sk-invalid-key"
+                    "api_key": "sk-invalid-key",
+                    "validate_api": True
                 }
             )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["valid"] is False
-        assert "error" in data
+        # 即使 API 验证失败，仍然返回 valid=True（因为我们没有阻止继续）
+        assert data["valid"] is True
+        assert data["api_validation"]["valid"] is False
+        assert data["api_validation"]["error_type"] == "invalid_key"
 
     @pytest.mark.asyncio
-    async def test_validate_key_with_custom_base_url(self, client, admin_token):
-        """验证自定义 base_url"""
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_response = MagicMock()
-            mock_response.json.return_value = {"data": []}
-            mock_response.raise_for_status = MagicMock()
+    async def test_validate_key_with_api_discovery(self, client, admin_token, db_session):
+        """使用 discover_from_api=True 从 API 发现模型"""
+        from services.api_discovery import DiscoveredModelInfo, DiscoveryResult
 
-            mock_instance = AsyncMock()
-            mock_instance.__aenter__.return_value = mock_instance
-            mock_instance.get.return_value = mock_response
-            mock_client.return_value = mock_instance
+        with patch('services.api_discovery.discover_models_from_api') as mock_discover:
+            mock_discover.return_value = DiscoveryResult(
+                success=True,
+                models=[
+                    DiscoveredModelInfo(
+                        model_id="gpt-4o",
+                        display_name="GPT-4o",
+                        input_price=Decimal("0"),
+                        output_price=Decimal("0"),
+                    ),
+                    DiscoveredModelInfo(
+                        model_id="gpt-4o-mini",
+                        display_name="GPT-4o Mini",
+                        input_price=Decimal("0"),
+                        output_price=Decimal("0"),
+                    ),
+                ],
+                total_count=2,
+            )
 
             response = await client.post(
                 "/api/admin/providers/validate-key",
                 headers={"Authorization": f"Bearer {admin_token}"},
                 json={
                     "provider_preset": "openai",
-                    "api_key": "sk-test-key",
-                    "custom_base_url": "https://custom.api.com/v1"
+                    "api_key": "sk-test-key-12345",
+                    "discover_from_api": True
                 }
             )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is True
+        assert data["models_source"] == "api"
+        assert len(data["discovered_models"]) == 2
+        # API 发现的模型标记 from_api=True
+        assert data["discovered_models"][0]["from_api"] is True
+
+    @pytest.mark.asyncio
+    async def test_validate_key_invalid_preset(self, client, admin_token):
+        """无效预设"""
+        response = await client.post(
+            "/api/admin/providers/validate-key",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "provider_preset": "nonexistent",
+                "api_key": "sk-test-key"
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is False
+        assert "error" in data
+        assert data["error"]["type"] == "invalid_preset"
+
+    @pytest.mark.asyncio
+    async def test_validate_key_with_custom_base_url(self, client, admin_token):
+        """验证自定义 base_url"""
+        response = await client.post(
+            "/api/admin/providers/validate-key",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "provider_preset": "openai",
+                "api_key": "sk-test-key",
+                "custom_base_url": "https://custom.api.com/v1"
+            }
+        )
 
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is True
         assert data["auto_config"]["base_url"] == "https://custom.api.com/v1"
 
+    @pytest.mark.asyncio
+    async def test_validate_key_minimax_without_api_call(self, client, admin_token, db_session):
+        """MiniMax 供应商默认不调用 API（不再依赖 /models 端点）"""
+        from models.provider import Provider
+        from models.model_catalog import ModelCatalog, ModelStatus, ModelSource
+
+        # 创建 MiniMax 供应商
+        provider = Provider(
+            id=uuid.uuid4(),
+            name="minimax",
+            display_name="MiniMax",
+            base_url="https://api.minimaxi.com/anthropic/v1",
+            api_format="openai_compatible",
+            enabled=True,
+            models_dev_id="minimax",
+        )
+        db_session.add(provider)
+        await db_session.flush()
+
+        # 创建模型
+        model = ModelCatalog(
+            id=uuid.uuid4(),
+            model_id="MiniMax-M2.5",
+            display_name="MiniMax M2.5",
+            provider_id=provider.id,
+            input_price=Decimal("0.5"),
+            output_price=Decimal("2.0"),
+            status=ModelStatus.ACTIVE,
+            source=ModelSource.MODELS_DEV,
+            is_pricing_confirmed=True,
+        )
+        db_session.add(model)
+        await db_session.commit()
+
+        # 调用接口，默认不调用 API
+        response = await client.post(
+            "/api/admin/providers/validate-key",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "provider_preset": "minimax-cn-coding-plan",
+                "api_key": "test-minimax-key"
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is True
+        assert data["models_source"] == "catalog"
+        assert len(data["discovered_models"]) == 1
+        assert data["discovered_models"][0]["model_id"] == "MiniMax-M2.5"
+
 
 class TestQuickCreateProvider:
-    """测试一键创建供应商接口"""
+    """测试一键创建供应商接口（新流程）"""
 
     @pytest.mark.asyncio
-    async def test_quick_create_success(self, client, admin_token, db_session):
-        """一键创建供应商成功"""
-        with patch('routers.admin.get_discovery_service') as mock_discovery:
-            mock_service = AsyncMock()
-            mock_service.discover_models.return_value = [
-                {
-                    "model_id": "gpt-4o-mini",
-                    "display_name": "GPT-4o Mini",
-                    "input_price": 0.15,
-                    "output_price": 0.6,
-                    "context_window": 128000,
-                    "supports_vision": True,
-                    "supports_tools": True,
-                }
-            ]
-            mock_discovery.return_value = mock_service
+    async def test_quick_create_from_local_catalog(self, client, admin_token, db_session):
+        """从本地 ModelCatalog 创建供应商"""
+        # 这个测试验证的是：当本地有相同 models_dev_id 的供应商和模型数据时，
+        # quick-create 可以为新供应商复制这些模型。
+        # 但由于模型 model_id 唯一，所以会跳过已存在的模型。
+        # 要测试真正的"从本地获取"流程，需要使用 API 发现来补充。
+
+        # 使用 discover_from_api=True 来模拟从 API 获取模型
+        from services.api_discovery import DiscoveredModelInfo, DiscoveryResult
+        from decimal import Decimal
+
+        with patch('services.api_discovery.discover_models_from_api') as mock_discover:
+            mock_discover.return_value = DiscoveryResult(
+                success=True,
+                models=[
+                    DiscoveredModelInfo(
+                        model_id="gpt-4o-mini",
+                        display_name="GPT-4o Mini",
+                        input_price=Decimal("0.15"),
+                        output_price=Decimal("0.6"),
+                        context_window=128000,
+                        supports_vision=True,
+                        supports_tools=True,
+                    ),
+                ],
+                total_count=1,
+            )
 
             response = await client.post(
                 "/api/admin/providers/quick-create",
                 headers={"Authorization": f"Bearer {admin_token}"},
                 json={
                     "provider_preset": "openai",
-                    "api_key": "sk-test-key-12345678"
+                    "api_key": "sk-test-key-12345678",
+                    "discover_from_api": True
                 }
             )
 
@@ -192,6 +374,44 @@ class TestQuickCreateProvider:
         assert "api_key" in data
         assert "discovery_result" in data
         assert data["provider"]["name"] == "openai"
+        # 从 API 获取的模型
+        assert data["discovery_result"]["total_models"] == 1
+        assert data["discovery_result"]["models_source"] == "api"
+
+    @pytest.mark.asyncio
+    async def test_quick_create_with_api_discovery(self, client, admin_token, db_session):
+        """从 API 发现模型（discover_from_api=True）"""
+        from services.api_discovery import DiscoveredModelInfo, DiscoveryResult
+
+        with patch('services.api_discovery.discover_models_from_api') as mock_discover:
+            mock_discover.return_value = DiscoveryResult(
+                success=True,
+                models=[
+                    DiscoveredModelInfo(
+                        model_id="gpt-4o",
+                        display_name="GPT-4o",
+                        input_price=Decimal("0"),
+                        output_price=Decimal("0"),
+                    ),
+                ],
+                total_count=1,
+            )
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "openai",
+                    "api_key": "sk-test-key-12345678",
+                    "discover_from_api": True
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["provider"]["name"] == "openai"
+        assert data["discovery_result"]["total_models"] == 1
+        assert data["discovery_result"]["models_source"] == "api"
 
     @pytest.mark.asyncio
     async def test_quick_create_provider_already_exists(self, client, admin_token, db_session):
@@ -233,3 +453,67 @@ class TestQuickCreateProvider:
         )
 
         assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_quick_create_minimax_without_api_call(self, client, admin_token, db_session):
+        """MiniMax 供应商默认不调用 API"""
+        from services.api_discovery import DiscoveryResult
+
+        # 确保没有 API 调用
+        with patch('services.api_discovery.discover_models_from_api') as mock_discover:
+            mock_discover.return_value = DiscoveryResult(
+                success=False,
+                models=[],
+                total_count=0,
+                error_type="not_called",
+                error_message="Should not be called"
+            )
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "minimax-cn-coding-plan",
+                    "api_key": "test-minimax-key"
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["provider"]["name"] == "minimax"
+        # 没有 API 调用，模型来源为 none
+        assert data["discovery_result"]["models_source"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_quick_create_without_auto_activate(self, client, admin_token, db_session):
+        """不自动激活模型"""
+        from services.api_discovery import DiscoveredModelInfo, DiscoveryResult
+
+        with patch('services.api_discovery.discover_models_from_api') as mock_discover:
+            mock_discover.return_value = DiscoveryResult(
+                success=True,
+                models=[
+                    DiscoveredModelInfo(
+                        model_id="gpt-4o",
+                        display_name="GPT-4o",
+                    ),
+                ],
+                total_count=1,
+            )
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "openai",
+                    "api_key": "sk-test-key",
+                    "auto_activate_models": False,
+                    "discover_from_api": True
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        # 模型被发现但未激活
+        assert data["discovery_result"]["total_models"] == 1
+        assert data["discovery_result"]["activated_models"] == 0
