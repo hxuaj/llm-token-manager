@@ -93,10 +93,14 @@ class ProviderResponse(BaseModel):
     """供应商响应"""
     id: str
     name: str
+    display_name: Optional[str] = None
     base_url: str
     api_format: str
     enabled: bool
     config: Optional[str]
+    source: Optional[str] = None
+    supported_endpoints: List[str] = []
+    key_count: int = 0
     created_at: str
 
     class Config:
@@ -195,15 +199,19 @@ def user_to_list_item(user: User) -> UserListItem:
     )
 
 
-def provider_to_response(provider: Provider) -> ProviderResponse:
+def provider_to_response(provider: Provider, key_count: int = 0) -> ProviderResponse:
     """转换供应商模型为响应"""
     return ProviderResponse(
         id=str(provider.id),
         name=provider.name,
+        display_name=provider.display_name,
         base_url=provider.base_url,
         api_format=provider.api_format,
         enabled=provider.enabled,
         config=provider.config,
+        source=provider.source,
+        supported_endpoints=provider.supported_endpoints or [],
+        key_count=key_count,
         created_at=provider.created_at.isoformat()
     )
 
@@ -471,9 +479,22 @@ async def list_providers(
     db: AsyncSession = Depends(get_db)
 ):
     """获取供应商列表"""
-    result = await db.execute(select(Provider).order_by(Provider.name))
+    from models.provider_api_key import ProviderApiKey
+
+    result = await db.execute(
+        select(Provider)
+        .options(selectinload(Provider.api_keys))
+        .order_by(Provider.name)
+    )
     providers = result.scalars().all()
-    return [provider_to_response(p) for p in providers]
+
+    responses = []
+    for p in providers:
+        # 计算活跃的 key 数量
+        active_key_count = len([k for k in p.api_keys if k.status == ProviderKeyStatus.ACTIVE.value])
+        responses.append(provider_to_response(p, key_count=active_key_count))
+
+    return responses
 
 
 @router.get("/providers/{provider_id}", response_model=ProviderDetail)
