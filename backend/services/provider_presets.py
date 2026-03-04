@@ -45,10 +45,10 @@ PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
         supports_cache_pricing=True,
         description="Claude 系列模型",
     ),
-    "glm-coding-plan": ProviderPreset(
-        id="glm-coding-plan",
+    "zhipuai-coding-plan": ProviderPreset(
+        id="zhipuai-coding-plan",
         name="zhipu",
-        display_name="GLM Coding Plan",
+        display_name="Zhipu AI Coding Plan",
         api_format="openai_compatible",
         default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
         supported_endpoints=["openai", "anthropic"],

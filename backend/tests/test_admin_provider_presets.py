@@ -51,7 +51,7 @@ class TestProviderPresets:
         # 验证包含主要供应商（精简为 5 个）
         assert "openai" in preset_ids
         assert "anthropic" in preset_ids
-        assert "glm-coding-plan" in preset_ids
+        assert "zhipuai-coding-plan" in preset_ids
         assert "minimax-coding-plan" in preset_ids
         assert "openrouter" in preset_ids
 
