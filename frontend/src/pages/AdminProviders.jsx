@@ -257,7 +257,9 @@ export default function AdminProviders() {
       // 定价单位已经是 USD/1M tokens，直接使用
       pricingForm.setFieldsValue({
         input_price: selectedModel.input_price || 0,
-        output_price: selectedModel.output_price || 0
+        output_price: selectedModel.output_price || 0,
+        cache_write_price: selectedModel.cache_write_price || null,
+        cache_read_price: selectedModel.cache_read_price || null
       })
     }
   }
@@ -267,7 +269,9 @@ export default function AdminProviders() {
       // 使用模型 ID 更新定价
       await adminModelApi.updatePricing(values.model_id, {
         input_price: values.input_price,
-        output_price: values.output_price
+        output_price: values.output_price,
+        cache_write_price: values.cache_write_price || null,
+        cache_read_price: values.cache_read_price || null
       })
       message.success('定价更新成功')
       pricingForm.resetFields()
@@ -417,16 +421,28 @@ export default function AdminProviders() {
       ),
     },
     {
-      title: '输入价格 ($/1M tokens)',
+      title: '输入价格 ($/1M)',
       dataIndex: 'input_price',
       key: 'input_price',
       render: (price) => `$${parseFloat(price || 0).toFixed(4)}`,
     },
     {
-      title: '输出价格 ($/1M tokens)',
+      title: '输出价格 ($/1M)',
       dataIndex: 'output_price',
       key: 'output_price',
       render: (price) => `$${parseFloat(price || 0).toFixed(4)}`,
+    },
+    {
+      title: '缓存写入 ($/1M)',
+      dataIndex: 'cache_write_price',
+      key: 'cache_write_price',
+      render: (price) => price != null ? `$${parseFloat(price).toFixed(4)}` : '-',
+    },
+    {
+      title: '缓存读取 ($/1M)',
+      dataIndex: 'cache_read_price',
+      key: 'cache_read_price',
+      render: (price) => price != null ? `$${parseFloat(price).toFixed(4)}` : '-',
     },
     {
       title: '定价来源',
@@ -767,7 +783,7 @@ export default function AdminProviders() {
           setProviderModels([])
         }}
         footer={null}
-        width={800}
+        width={1000}
       >
         <div style={{ marginBottom: 24 }}>
           <Title level={5}>更新模型定价</Title>
@@ -806,6 +822,12 @@ export default function AdminProviders() {
               rules={[{ required: true, message: '请输入价格' }]}
             >
               <InputNumber placeholder="输出价格 ($/1M)" min={0} step={0.01} style={{ width: 140 }} />
+            </Form.Item>
+            <Form.Item name="cache_write_price">
+              <InputNumber placeholder="缓存写入 ($/1M)" min={0} step={0.01} style={{ width: 140 }} />
+            </Form.Item>
+            <Form.Item name="cache_read_price">
+              <InputNumber placeholder="缓存读取 ($/1M)" min={0} step={0.01} style={{ width: 140 }} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit">

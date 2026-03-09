@@ -156,6 +156,8 @@ class ModelCatalogService:
         model_id: str,
         input_price: Decimal,
         output_price: Decimal,
+        cache_write_price: Optional[Decimal] = None,
+        cache_read_price: Optional[Decimal] = None,
         changed_by_id: Optional[uuid.UUID] = None,
         reason: Optional[str] = None
     ) -> Optional[ModelCatalog]:
@@ -167,6 +169,8 @@ class ModelCatalogService:
             model_id: 模型 ID
             input_price: 新的输入单价
             output_price: 新的输出单价
+            cache_write_price: 缓存写入单价（可选）
+            cache_read_price: 缓存读取单价（可选）
             changed_by_id: 操作者 ID（用于历史记录，Batch 3 实现）
             reason: 变更原因（用于历史记录，Batch 3 实现）
 
@@ -183,6 +187,8 @@ class ModelCatalogService:
 
         model.input_price = input_price
         model.output_price = output_price
+        model.cache_write_price = cache_write_price
+        model.cache_read_price = cache_read_price
         model.is_pricing_confirmed = True
         model.updated_at = datetime.utcnow()
 

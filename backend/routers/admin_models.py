@@ -80,6 +80,8 @@ class ModelPricingUpdate(BaseModel):
     """更新模型定价"""
     input_price: float = Field(..., ge=0)
     output_price: float = Field(..., ge=0)
+    cache_write_price: Optional[float] = Field(default=None, ge=0)
+    cache_read_price: Optional[float] = Field(default=None, ge=0)
     reason: Optional[str] = None
 
 
@@ -269,6 +271,8 @@ async def update_model_pricing(
         model_id,
         Decimal(str(data.input_price)),
         Decimal(str(data.output_price)),
+        cache_write_price=Decimal(str(data.cache_write_price)) if data.cache_write_price is not None else None,
+        cache_read_price=Decimal(str(data.cache_read_price)) if data.cache_read_price is not None else None,
         changed_by_id=admin_user.id,
         reason=data.reason
     )
