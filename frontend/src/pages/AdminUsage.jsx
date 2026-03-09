@@ -5,15 +5,15 @@
 import React, { useState, useEffect } from 'react'
 import {
   Card, Row, Col, Statistic, Typography, Spin, Empty, Select,
-  Table, Tabs, DatePicker, Button, Tag, Progress, Space
+  Table, Tabs, DatePicker, Button, Tag, Progress, Space, Radio
 } from 'antd'
 import {
   DollarOutlined, ApiOutlined, TeamOutlined, DownloadOutlined,
-  BarChartOutlined, UserOutlined, CloudServerOutlined
+  BarChartOutlined, UserOutlined, CloudServerOutlined, SortAscendingOutlined
 } from '@ant-design/icons'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip as RechartsTooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as BarTooltip
+  BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts'
 import { adminUsageApi } from '../api'
 
@@ -31,6 +31,7 @@ export default function AdminUsage() {
   const [byModel, setByModel] = useState(null)
   const [byUser, setByUser] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [userChartSortBy, setUserChartSortBy] = useState('cost_usd') // 'cost_usd' or 'request_count'
 
   useEffect(() => {
     loadOverview()
@@ -319,34 +320,90 @@ export default function AdminUsage() {
               key: 'user',
               label: <span><UserOutlined /> 按用户</span>,
               children: (
-                <Table
-                  columns={userColumns}
-                  dataSource={byUser?.users || []}
-                  rowKey="user_id"
-                  pagination={{ pageSize: 10 }}
-                  expandable={{
-                    expandedRowRender: (record) => (
-                      <Table
-                        columns={[
-                          { title: '模型', dataIndex: 'model_id', key: 'model_id' },
-                          { title: '请求数', dataIndex: 'request_count', key: 'request_count' },
-                          {
-                            title: '费用',
-                            dataIndex: 'cost_usd',
-                            key: 'cost_usd',
-                            render: (v) => `$${parseFloat(v || 0).toFixed(4)}`,
-                          },
-                        ]}
-                        dataSource={record.models || []}
-                        rowKey="model_id"
-                        pagination={false}
-                        size="small"
-                      />
-                    ),
-                    rowExpandable: (record) => record.models && record.models.length > 0,
-                  }}
-                  size="small"
-                />
+                <Row gutter={[24, 24]}>
+                  <Col xs={24} lg={12}>
+                    <Card
+                      title="用户用量分布"
+                      size="small"
+                      extra={
+                        <Radio.Group
+                          value={userChartSortBy}
+                          onChange={(e) => setUserChartSortBy(e.target.value)}
+                          size="small"
+                          optionType="button"
+                        >
+                          <Radio.Button value="cost_usd">按费用</Radio.Button>
+                          <Radio.Button value="request_count">按请求数</Radio.Button>
+                        </Radio.Group>
+                      }
+                    >
+                      {byUser?.users?.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart
+                            data={[...byUser.users]
+                              .sort((a, b) => (b[userChartSortBy] || 0) - (a[userChartSortBy] || 0))
+                              .slice(0, 15)
+                              .map(u => ({
+                                username: u.username?.length > 8 ? u.username.slice(0, 8) + '...' : u.username,
+                                '费用($)': parseFloat(u.cost_usd || 0),
+                                '请求数': u.request_count || 0,
+                              }))}
+                            layout="vertical"
+                            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis type="number" />
+                            <YAxis dataKey="username" type="category" width={80} />
+                            <RechartsTooltip
+                              formatter={(value, name) => {
+                                if (name === '费用($)') return `$${value.toFixed(4)}`
+                                return value.toLocaleString()
+                              }}
+                            />
+                            <Legend />
+                            {userChartSortBy === 'cost_usd' ? (
+                              <Bar dataKey="费用($)" fill="#1890ff" />
+                            ) : (
+                              <Bar dataKey="请求数" fill="#52c41a" />
+                            )}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <Empty description="暂无数据" style={{ padding: '80px 0' }} />
+                      )}
+                    </Card>
+                  </Col>
+                  <Col xs={24} lg={12}>
+                    <Table
+                      columns={userColumns}
+                      dataSource={byUser?.users || []}
+                      rowKey="user_id"
+                      pagination={{ pageSize: 10 }}
+                      expandable={{
+                        expandedRowRender: (record) => (
+                          <Table
+                            columns={[
+                              { title: '模型', dataIndex: 'model_id', key: 'model_id' },
+                              { title: '请求数', dataIndex: 'request_count', key: 'request_count' },
+                              {
+                                title: '费用',
+                                dataIndex: 'cost_usd',
+                                key: 'cost_usd',
+                                render: (v) => `$${parseFloat(v || 0).toFixed(4)}`,
+                              },
+                            ]}
+                            dataSource={record.models || []}
+                            rowKey="model_id"
+                            pagination={false}
+                            size="small"
+                          />
+                        ),
+                        rowExpandable: (record) => record.models && record.models.length > 0,
+                      }}
+                      size="small"
+                    />
+                  </Col>
+                </Row>
               ),
             },
           ]}
