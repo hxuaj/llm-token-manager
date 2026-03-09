@@ -140,7 +140,8 @@ class DiscoveredModel(BaseModel):
     output_price: float
     cache_read_price: Optional[float] = None
     cache_write_price: Optional[float] = None
-    pricing_source: str  # "catalog", "api", "catalog+api"
+    pricing_source: str  # "catalog", "models_dev", "api"
+    is_pricing_confirmed: bool = False  # 定价是否已确认（有有效定价数据）
     context_window: Optional[int] = None
     supports_vision: bool = False
     supports_tools: bool = True
@@ -268,6 +269,7 @@ async def validate_provider_key(
                 cache_read_price=float(model.cache_read_price) if model.cache_read_price else None,
                 cache_write_price=float(model.cache_write_price) if model.cache_write_price else None,
                 pricing_source="catalog",
+                is_pricing_confirmed=is_pricing_confirmed,
                 context_window=model.context_window,
                 supports_vision=model.supports_vision,
                 supports_tools=model.supports_tools,
@@ -297,6 +299,7 @@ async def validate_provider_key(
                     cache_read_price=float(model.cache_read_price) if model.cache_read_price else None,
                     cache_write_price=float(model.cache_write_price) if model.cache_write_price else None,
                     pricing_source="models_dev",
+                    is_pricing_confirmed=is_pricing_confirmed,
                     context_window=model.context_window,
                     supports_vision=model.supports_vision,
                     supports_tools=model.supports_tools,
@@ -333,6 +336,7 @@ async def validate_provider_key(
                         cache_read_price=float(api_model.cache_read_price) if api_model.cache_read_price else None,
                         cache_write_price=float(api_model.cache_write_price) if api_model.cache_write_price else None,
                         pricing_source="api",
+                        is_pricing_confirmed=False,  # API 发现的模型默认未确认定价
                         context_window=api_model.context_window,
                         supports_vision=api_model.supports_vision,
                         supports_tools=api_model.supports_tools,

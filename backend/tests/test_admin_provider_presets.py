@@ -526,3 +526,55 @@ class TestQuickCreateProvider:
         # 模型被发现但未激活
         assert data["discovery_result"]["total_models"] == 1
         assert data["discovery_result"]["activated_models"] == 0
+
+    @pytest.mark.asyncio
+    async def test_quick_create_is_pricing_confirmed_set_correctly(self, client, admin_token, db_session):
+        """验证 is_pricing_confirmed 字段正确设置"""
+        from routers.admin_provider_presets import ModelsDevModel
+        from sqlalchemy import select
+        from models.model_catalog import ModelCatalog
+
+        # Mock models.dev 返回有定价和无定价的模型
+        with patch('routers.admin_provider_presets.fetch_models_from_models_dev') as mock_fetch:
+            mock_fetch.return_value = [
+                ModelsDevModel(
+                    model_id="gpt-4o",
+                    display_name="GPT-4o",
+                    input_price=Decimal("2.5"),  # 有定价
+                    output_price=Decimal("10.0"),
+                ),
+                ModelsDevModel(
+                    model_id="gpt-4o-free",
+                    display_name="GPT-4o Free",
+                    input_price=Decimal("0"),  # 无定价
+                    output_price=Decimal("0"),
+                ),
+            ]
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "openai",
+                    "api_key": "sk-test-key-pricing-check"
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["discovery_result"]["pricing_confirmed"] == 1  # 只有一个有定价
+
+        # 验证数据库中的 is_pricing_confirmed 字段
+        result = await db_session.execute(
+            select(ModelCatalog).where(ModelCatalog.model_id == "gpt-4o")
+        )
+        model_with_price = result.scalar_one_or_none()
+        assert model_with_price is not None
+        assert model_with_price.is_pricing_confirmed is True  # 有定价的模型
+
+        result = await db_session.execute(
+            select(ModelCatalog).where(ModelCatalog.model_id == "gpt-4o-free")
+        )
+        model_without_price = result.scalar_one_or_none()
+        assert model_without_price is not None
+        assert model_without_price.is_pricing_confirmed is False  # 无定价的模型

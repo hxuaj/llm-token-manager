@@ -621,7 +621,7 @@ export default function AdminProviders() {
                             <Space>
                               <Text>{model.display_name}</Text>
                               <Tag>{model.model_id}</Tag>
-                              {model.pricing_source === 'models_dev' ? (
+                              {model.is_pricing_confirmed ? (
                                 <Tag color="green">定价已确认</Tag>
                               ) : (
                                 <Tag color="orange">定价待配置</Tag>
