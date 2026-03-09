@@ -1203,6 +1203,7 @@ async def quick_create_provider(
             output_price = model.get("output_price", Decimal("0"))
             cache_read_price = model.get("cache_read_price")
             cache_write_price = model.get("cache_write_price")
+            is_pricing_confirmed = False
 
             try:
                 dev_model = await models_dev.get_model(preset.name, model_id)
@@ -1215,6 +1216,7 @@ async def quick_create_provider(
                             cache_read_price = Decimal(str(cost["cache_read"]))
                         if cost.get("cache_write"):
                             cache_write_price = Decimal(str(cost["cache_write"]))
+                        is_pricing_confirmed = True
                         pricing_confirmed += 1
             except Exception:
                 pass
@@ -1237,6 +1239,7 @@ async def quick_create_provider(
                     status=ModelStatus.ACTIVE,
                     source=ModelSource.AUTO_DISCOVERED,
                     models_dev_id=model_id,
+                    is_pricing_confirmed=is_pricing_confirmed,
                 )
                 db.add(catalog)
                 activated_models += 1
