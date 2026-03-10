@@ -172,10 +172,13 @@ class AnthropicAdapter(BaseAdapter):
                         }
                     })
 
-        # 提取 usage
+        # 提取 usage（包含 cache tokens）
         usage = provider_response.get("usage", {})
         input_tokens = usage.get("input_tokens", 0)
         output_tokens = usage.get("output_tokens", 0)
+        # Anthropic cache tokens 字段
+        cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+        cache_write_tokens = usage.get("cache_creation_input_tokens", 0)
 
         # 确定 finish_reason
         stop_reason = provider_response.get("stop_reason", "end_turn")
@@ -193,6 +196,18 @@ class AnthropicAdapter(BaseAdapter):
         if tool_calls:
             message["tool_calls"] = tool_calls
 
+        # 构建 usage 对象，包含 cache tokens
+        openai_usage = {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens
+        }
+        # 添加 cache tokens（如果有）
+        if cache_read_tokens > 0:
+            openai_usage["cache_read_tokens"] = cache_read_tokens
+        if cache_write_tokens > 0:
+            openai_usage["cache_write_tokens"] = cache_write_tokens
+
         return {
             "id": provider_response.get("id", f"chatcmpl-{int(time.time())}"),
             "object": "chat.completion",
@@ -205,11 +220,7 @@ class AnthropicAdapter(BaseAdapter):
                     "finish_reason": finish_reason
                 }
             ],
-            "usage": {
-                "prompt_tokens": input_tokens,
-                "completion_tokens": output_tokens,
-                "total_tokens": input_tokens + output_tokens
-            }
+            "usage": openai_usage
         }
 
     async def forward_request(

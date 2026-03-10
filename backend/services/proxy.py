@@ -143,7 +143,9 @@ async def calculate_request_cost(
     output_tokens: int,
     model_id: str,
     api_key: ProviderApiKey,
-    db: AsyncSession
+    db: AsyncSession,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0
 ) -> Decimal:
     """
     计算请求费用
@@ -159,6 +161,8 @@ async def calculate_request_cost(
         model_id: 模型 ID
         api_key: 使用的 API Key
         db: 数据库 session
+        cache_read_tokens: 缓存读取 token 数
+        cache_write_tokens: 缓存写入 token 数
 
     Returns:
         费用（USD）
@@ -175,7 +179,7 @@ async def calculate_request_cost(
     if api_key.is_coding_plan:
         return Decimal("0")
 
-    # 优先级 3: 查询 model_catalog 定价
+    # 优先级 3: 查询 model_catalog 定价（包含 cache 定价）
     result = await db.execute(
         select(ModelCatalog).where(ModelCatalog.model_id == model_id)
     )
@@ -186,9 +190,14 @@ async def calculate_request_cost(
             Decimal(str(input_tokens)) * model.input_price / Decimal("1000000")
             + Decimal(str(output_tokens)) * model.output_price / Decimal("1000000")
         )
+        # 计算 cache tokens 费用
+        if cache_read_tokens > 0 and model.cache_read_price:
+            cost += Decimal(str(cache_read_tokens)) * model.cache_read_price / Decimal("1000000")
+        if cache_write_tokens > 0 and model.cache_write_price:
+            cost += Decimal(str(cache_write_tokens)) * model.cache_write_price / Decimal("1000000")
         return cost
 
-    # 回退：查询 model_pricing 表
+    # 回退：查询 model_pricing 表（不支持 cache 定价）
     result = await db.execute(
         select(ModelPricing).where(ModelPricing.model_name == model_id)
     )

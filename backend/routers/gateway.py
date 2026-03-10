@@ -219,13 +219,17 @@ async def chat_completions(
             usage = response.get("usage", {})
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
+            cache_read_tokens = usage.get("cache_read_tokens", 0)
+            cache_write_tokens = usage.get("cache_write_tokens", 0)
 
-            # 计算费用
+            # 计算费用（包含 cache tokens）
             cost_usd = await calculate_request_cost(
-                input_tokens, output_tokens, request.model, provider_api_key, db
+                input_tokens, output_tokens, request.model, provider_api_key, db,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens
             )
 
-            # 记录请求日志（包含新的字段）
+            # 记录请求日志（包含 cache tokens）
             await log_request(
                 user_id=user.id,
                 key_id=api_key.id,
@@ -237,6 +241,8 @@ async def chat_completions(
                 cost_usd=cost_usd,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
                 key_plan=provider_api_key.key_plan,
                 db=db
             )
@@ -347,6 +353,8 @@ async def stream_response_generator(
     """
     total_prompt_tokens = 0
     total_completion_tokens = 0
+    total_cache_read_tokens = 0
+    total_cache_write_tokens = 0
     error_occurred = False
     error_message = None
 
@@ -364,6 +372,8 @@ async def stream_response_generator(
                         if usage:
                             total_prompt_tokens = usage.get('prompt_tokens', 0)
                             total_completion_tokens = usage.get('completion_tokens', 0)
+                            total_cache_read_tokens = usage.get('cache_read_tokens', 0)
+                            total_cache_write_tokens = usage.get('cache_write_tokens', 0)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
 
@@ -383,11 +393,13 @@ async def stream_response_generator(
         # 计算延迟并记录日志
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # 计算费用
+        # 计算费用（包含 cache tokens）
         cost_usd = Decimal("0")
         if not error_occurred:
             cost_usd = await calculate_request_cost(
-                total_prompt_tokens, total_completion_tokens, model, provider_api_key, db
+                total_prompt_tokens, total_completion_tokens, model, provider_api_key, db,
+                cache_read_tokens=total_cache_read_tokens,
+                cache_write_tokens=total_cache_write_tokens
             )
 
         await log_request(
@@ -402,6 +414,8 @@ async def stream_response_generator(
             cost_usd=cost_usd,
             input_tokens=total_prompt_tokens,
             output_tokens=total_completion_tokens,
+            cache_read_tokens=total_cache_read_tokens,
+            cache_write_tokens=total_cache_write_tokens,
             key_plan=provider_api_key.key_plan,
             db=db
         )
