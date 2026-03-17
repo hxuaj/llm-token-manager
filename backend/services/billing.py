@@ -15,9 +15,7 @@ from sqlalchemy import select
 
 from models.request_log import RequestLog, RequestStatus
 from models.monthly_usage import MonthlyUsage
-from models.model_pricing import ModelPricing
 from models.model_catalog import ModelCatalog
-from models.provider import Provider
 
 
 async def calculate_cost(
@@ -62,21 +60,8 @@ async def calculate_cost(
 
         return input_cost + output_cost + cache_cost
 
-    # 回退到 ModelPricing（旧版定价表，不含缓存定价）
-    result = await db.execute(
-        select(ModelPricing).where(ModelPricing.model_name == model)
-    )
-    pricing = result.scalar_one_or_none()
-
-    if not pricing:
-        # 没有定价信息时返回 0
-        return Decimal("0")
-
-    # ModelPricing 定价单位是 USD per 1K tokens
-    input_cost = Decimal(str(prompt_tokens)) * pricing.input_price_per_1k / Decimal("1000")
-    output_cost = Decimal(str(completion_tokens)) * pricing.output_price_per_1k / Decimal("1000")
-
-    return input_cost + output_cost
+    # 没有定价信息时返回 0
+    return Decimal("0")
 
 
 async def log_request(

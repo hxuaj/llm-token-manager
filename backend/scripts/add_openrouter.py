@@ -15,44 +15,44 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import async_session_maker, engine
 from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
-from models.model_pricing import ModelPricing
+from models.model_catalog import ModelCatalog, ModelStatus, ModelSource
 from services.encryption import encrypt
 from sqlalchemy import select
 
 
-# OpenRouter 热门模型定价（参考 2026 年 2 月价格）
+# OpenRouter 热门模型定价（单位：USD per 1M tokens）
 OPENROUTER_MODELS = [
     # OpenAI models
-    {"model_name": "openai/gpt-4o", "input_price": 2.50, "output_price": 10.00},
-    {"model_name": "openai/gpt-4o-mini", "input_price": 0.15, "output_price": 0.60},
-    {"model_name": "openai/o1-preview", "input_price": 15.00, "output_price": 60.00},
-    {"model_name": "openai/o1-mini", "input_price": 1.50, "output_price": 6.00},
+    {"model_id": "openai/gpt-4o", "display_name": "GPT-4o", "input_price": 2.50, "output_price": 10.00},
+    {"model_id": "openai/gpt-4o-mini", "display_name": "GPT-4o Mini", "input_price": 0.15, "output_price": 0.60},
+    {"model_id": "openai/o1-preview", "display_name": "o1 Preview", "input_price": 15.00, "output_price": 60.00},
+    {"model_id": "openai/o1-mini", "display_name": "o1 Mini", "input_price": 1.50, "output_price": 6.00},
 
     # Anthropic models
-    {"model_name": "anthropic/claude-sonnet-4", "input_price": 3.00, "output_price": 15.00},
-    {"model_name": "anthropic/claude-3.5-sonnet", "input_price": 3.00, "output_price": 15.00},
-    {"model_name": "anthropic/claude-3-haiku", "input_price": 0.25, "output_price": 1.25},
+    {"model_id": "anthropic/claude-sonnet-4", "display_name": "Claude Sonnet 4", "input_price": 3.00, "output_price": 15.00},
+    {"model_id": "anthropic/claude-3.5-sonnet", "display_name": "Claude 3.5 Sonnet", "input_price": 3.00, "output_price": 15.00},
+    {"model_id": "anthropic/claude-3-haiku", "display_name": "Claude 3 Haiku", "input_price": 0.25, "output_price": 1.25},
 
     # Google models
-    {"model_name": "google/gemini-pro-1.5", "input_price": 1.25, "output_price": 10.00},
-    {"model_name": "google/gemini-flash-1.5", "input_price": 0.075, "output_price": 0.30},
+    {"model_id": "google/gemini-pro-1.5", "display_name": "Gemini Pro 1.5", "input_price": 1.25, "output_price": 10.00},
+    {"model_id": "google/gemini-flash-1.5", "display_name": "Gemini Flash 1.5", "input_price": 0.075, "output_price": 0.30},
 
     # DeepSeek models
-    {"model_name": "deepseek/deepseek-chat", "input_price": 0.14, "output_price": 0.28},
-    {"model_name": "deepseek/deepseek-reasoner", "input_price": 0.55, "output_price": 2.19},
+    {"model_id": "deepseek/deepseek-chat", "display_name": "DeepSeek Chat", "input_price": 0.14, "output_price": 0.28},
+    {"model_id": "deepseek/deepseek-reasoner", "display_name": "DeepSeek Reasoner", "input_price": 0.55, "output_price": 2.19},
 
     # Meta Llama models
-    {"model_name": "meta-llama/llama-3.3-70b-instruct", "input_price": 0.35, "output_price": 0.40},
-    {"model_name": "meta-llama/llama-3.1-405b-instruct", "input_price": 2.00, "output_price": 2.00},
+    {"model_id": "meta-llama/llama-3.3-70b-instruct", "display_name": "Llama 3.3 70B", "input_price": 0.35, "output_price": 0.40},
+    {"model_id": "meta-llama/llama-3.1-405b-instruct", "display_name": "Llama 3.1 405B", "input_price": 2.00, "output_price": 2.00},
 
     # Mistral models
-    {"model_name": "mistralai/mistral-large", "input_price": 2.00, "output_price": 6.00},
+    {"model_id": "mistralai/mistral-large", "display_name": "Mistral Large", "input_price": 2.00, "output_price": 6.00},
 
     # Qwen models via OpenRouter
-    {"model_name": "qwen/qwen-2.5-72b-instruct", "input_price": 0.35, "output_price": 0.40},
+    {"model_id": "qwen/qwen-2.5-72b-instruct", "display_name": "Qwen 2.5 72B", "input_price": 0.35, "output_price": 0.40},
 
     # xAI Grok
-    {"model_name": "x-ai/grok-beta", "input_price": 5.00, "output_price": 15.00},
+    {"model_id": "x-ai/grok-beta", "display_name": "Grok Beta", "input_price": 5.00, "output_price": 15.00},
 ]
 
 
@@ -105,35 +105,38 @@ async def add_openrouter_provider(api_key: str = None):
                 await session.commit()
                 print(f"添加 API Key (后缀: ...{key_suffix})")
 
-        # 添加模型定价
+        # 添加模型到 ModelCatalog
+        from decimal import Decimal
         added_count = 0
         for model_data in OPENROUTER_MODELS:
             result = await session.execute(
-                select(ModelPricing).where(
-                    ModelPricing.provider_id == provider.id,
-                    ModelPricing.model_name == model_data["model_name"]
+                select(ModelCatalog).where(
+                    ModelCatalog.model_id == model_data["model_id"]
                 )
             )
-            existing_pricing = result.scalar_one_or_none()
+            existing_model = result.scalar_one_or_none()
 
-            if not existing_pricing:
-                from decimal import Decimal
-                pricing = ModelPricing(
+            if not existing_model:
+                catalog = ModelCatalog(
+                    model_id=model_data["model_id"],
+                    display_name=model_data["display_name"],
                     provider_id=provider.id,
-                    model_name=model_data["model_name"],
-                    input_price_per_1k=Decimal(str(model_data["input_price"])),
-                    output_price_per_1k=Decimal(str(model_data["output_price"])),
+                    input_price=Decimal(str(model_data["input_price"])),
+                    output_price=Decimal(str(model_data["output_price"])),
+                    status=ModelStatus.ACTIVE,
+                    source=ModelSource.MANUAL,
+                    is_pricing_confirmed=True,
                 )
-                session.add(pricing)
+                session.add(catalog)
                 added_count += 1
 
         await session.commit()
-        print(f"添加 {added_count} 个模型定价配置")
+        print(f"添加 {added_count} 个模型到 ModelCatalog")
 
         print("\n完成！OpenRouter 供应商已配置。")
         print("\n支持的热门模型：")
         for m in OPENROUTER_MODELS[:5]:
-            print(f"  - {m['model_name']}")
+            print(f"  - {m['model_id']}: {m['display_name']}")
         print(f"  ... 共 {len(OPENROUTER_MODELS)} 个模型")
 
 

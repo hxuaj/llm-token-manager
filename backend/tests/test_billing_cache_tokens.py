@@ -217,49 +217,6 @@ class TestCacheTokenBilling:
         assert cost == Decimal("0.0075")
 
     @pytest.mark.asyncio
-    async def test_calculate_cost_fallback_to_model_pricing(self, client, db_session):
-        """ModelCatalog 中找不到时回退到 ModelPricing"""
-        from services.billing import calculate_cost
-        from models.model_pricing import ModelPricing
-        from models.provider import Provider
-
-        # 创建供应商
-        provider = Provider(
-            id=uuid.uuid4(),
-            name="openai",
-            base_url="https://api.openai.com/v1",
-            api_format="openai",
-            enabled=True
-        )
-        db_session.add(provider)
-        await db_session.flush()
-
-        # 创建旧版 ModelPricing
-        pricing = ModelPricing(
-            id=uuid.uuid4(),
-            provider_id=provider.id,
-            model_name="gpt-3.5-turbo",
-            input_price_per_1k=Decimal("0.0015"),  # $0.0015 per 1K
-            output_price_per_1k=Decimal("0.002")   # $0.002 per 1K
-        )
-        db_session.add(pricing)
-        await db_session.commit()
-
-        # 计算费用
-        cost = await calculate_cost(
-            model="gpt-3.5-turbo",
-            prompt_tokens=1000,
-            completion_tokens=500,
-            db=db_session
-        )
-
-        # 验证费用计算（使用旧版定价）
-        # input_cost = 1000 * 0.0015 / 1000 = 0.0015
-        # output_cost = 500 * 0.002 / 1000 = 0.001
-        # total = 0.0025
-        assert cost == Decimal("0.0025")
-
-    @pytest.mark.asyncio
     async def test_log_request_with_cache_tokens(self, client, db_session, test_user, user_api_key):
         """记录包含缓存 tokens 的请求日志"""
         from services.billing import log_request

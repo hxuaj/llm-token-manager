@@ -106,11 +106,6 @@ class Provider(Base):
         back_populates="provider",
         cascade="all, delete-orphan"
     )
-    model_pricing: Mapped[list["ModelPricing"]] = relationship(
-        "ModelPricing",
-        back_populates="provider",
-        cascade="all, delete-orphan"
-    )
     models: Mapped[list["ModelCatalog"]] = relationship(
         "ModelCatalog",
         back_populates="provider",

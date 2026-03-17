@@ -16,7 +16,6 @@ from sqlalchemy import select
 
 from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
-from models.model_pricing import ModelPricing
 from models.model_catalog import ModelCatalog, ModelStatus
 from services.encryption import decrypt
 from services.key_selector import select_provider_key, NoAvailableKeyError
@@ -197,20 +196,6 @@ async def calculate_request_cost(
             cost += Decimal(str(cache_write_tokens)) * model.cache_write_price / Decimal("1000000")
         return cost
 
-    # 回退：查询 model_pricing 表（不支持 cache 定价）
-    result = await db.execute(
-        select(ModelPricing).where(ModelPricing.model_name == model_id)
-    )
-    pricing = result.scalar_one_or_none()
-
-    if pricing:
-        # model_pricing 单价是 per 1k tokens
-        cost = (
-            Decimal(str(input_tokens)) * pricing.input_price_per_1k / Decimal("1000")
-            + Decimal(str(output_tokens)) * pricing.output_price_per_1k / Decimal("1000")
-        )
-        return cost
-
     # 无法确定定价，返回 0
     return Decimal("0")
 
@@ -333,8 +318,7 @@ async def get_available_models(db: AsyncSession) -> list:
     """
     获取所有可用的模型列表
 
-    优先从 model_catalog 获取 active 状态的模型，
-    如果 model_catalog 为空，则回退到 model_pricing 表
+    从 model_catalog 获取 active 状态的模型
 
     Args:
         db: 数据库 session
@@ -344,7 +328,7 @@ async def get_available_models(db: AsyncSession) -> list:
     """
     from models.model_catalog import ModelCatalog, ModelStatus
 
-    # 首先尝试从 model_catalog 获取
+    # 从 model_catalog 获取
     result = await db.execute(
         select(ModelCatalog, Provider)
         .join(Provider, ModelCatalog.provider_id == Provider.id)
@@ -355,31 +339,12 @@ async def get_available_models(db: AsyncSession) -> list:
     )
     catalog_rows = result.all()
 
-    if catalog_rows:
-        models = []
-        for catalog, provider in catalog_rows:
-            models.append({
-                "id": catalog.model_id,
-                "object": "model",
-                "created": int(catalog.created_at.timestamp()),
-                "owned_by": provider.name
-            })
-        return models
-
-    # 回退到 model_pricing 表（向后兼容）
-    result = await db.execute(
-        select(ModelPricing, Provider)
-        .join(Provider, ModelPricing.provider_id == Provider.id)
-        .where(Provider.enabled == True)
-    )
-    rows = result.all()
-
     models = []
-    for pricing, provider in rows:
+    for catalog, provider in catalog_rows:
         models.append({
-            "id": pricing.model_name,
+            "id": catalog.model_id,
             "object": "model",
-            "created": int(pricing.created_at.timestamp()),
+            "created": int(catalog.created_at.timestamp()),
             "owned_by": provider.name
         })
 

@@ -21,7 +21,7 @@ async def test_user_cannot_access_any_admin_api(client, user_token):
     admin_endpoints = [
         ("GET", "/api/admin/users"),
         ("GET", "/api/admin/providers"),
-        ("GET", "/api/admin/model-pricing"),
+        ("GET", "/api/admin/providers/presets"),
     ]
 
     for method, endpoint in admin_endpoints:
@@ -333,62 +333,8 @@ async def test_delete_provider_key(client, admin_token):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# 模型单价配置测试
+# 模型单价配置测试（已迁移到 test_admin_models.py）
 # ─────────────────────────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_list_model_pricing(client, admin_token):
-    """获取模型单价列表 - 应返回 200"""
-    response = await client.get(
-        "/api/admin/model-pricing",
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-    assert response.status_code == 200
-    assert isinstance(response.json(), list)
-
-
-@pytest.mark.asyncio
-async def test_update_model_pricing(client, admin_token):
-    """修改模型单价 - 应返回 200"""
-    # 先创建供应商和定价
-    provider_response = await client.post(
-        "/api/admin/providers",
-        json={
-            "name": "pricing_test",
-            "base_url": "https://api.example.com/v1",
-            "enabled": True
-        },
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-    provider_id = provider_response.json()["id"]
-
-    # 添加模型定价
-    pricing_response = await client.post(
-        "/api/admin/model-pricing",
-        json={
-            "provider_id": provider_id,
-            "model_name": "gpt-4o",
-            "input_price_per_1k": 0.005,
-            "output_price_per_1k": 0.015
-        },
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-    assert pricing_response.status_code == 201
-    pricing_id = pricing_response.json()["id"]
-
-    # 更新定价
-    response = await client.put(
-        f"/api/admin/model-pricing/{pricing_id}",
-        json={
-            "input_price_per_1k": 0.006,
-            "output_price_per_1k": 0.018
-        },
-        headers={"Authorization": f"Bearer {admin_token}"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert float(data["input_price_per_1k"]) == 0.006
-    assert float(data["output_price_per_1k"]) == 0.018
 
 
 # ─────────────────────────────────────────────────────────────────────

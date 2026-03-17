@@ -25,7 +25,6 @@ from models.user import User, UserRole
 from models.user_api_key import UserApiKey, KeyStatus
 from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus, KeyPlan
-from models.model_pricing import ModelPricing
 from middleware.auth import get_current_admin_user
 from services.encryption import encrypt, decrypt, extract_key_suffix
 from services.key_selector import KeySelector
@@ -110,7 +109,6 @@ class ProviderResponse(BaseModel):
 class ProviderDetail(ProviderResponse):
     """供应商详情（包含 Key 列表）"""
     api_keys: List[dict]
-    model_pricing: List[dict]
 
 
 class ProviderKeyCreate(BaseModel):
@@ -147,35 +145,6 @@ class ProviderKeyResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-# 模型定价
-class ModelPricingCreate(BaseModel):
-    """创建模型定价"""
-    provider_id: str
-    model_name: str
-    input_price_per_1k: float = 0.0
-    output_price_per_1k: float = 0.0
-
-
-class ModelPricingResponse(BaseModel):
-    """模型定价响应"""
-    id: str
-    provider_id: str
-    provider_name: Optional[str]
-    model_name: str
-    input_price_per_1k: float
-    output_price_per_1k: float
-    created_at: str
-
-    class Config:
-        from_attributes = True
-
-
-class ModelPricingUpdate(BaseModel):
-    """更新模型定价"""
-    input_price_per_1k: Optional[float] = None
-    output_price_per_1k: Optional[float] = None
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -228,15 +197,6 @@ def provider_to_detail(provider: Provider) -> ProviderDetail:
         }
         for k in provider.api_keys
     ]
-    model_pricing = [
-        {
-            "id": str(p.id),
-            "model_name": p.model_name,
-            "input_price_per_1k": float(p.input_price_per_1k),
-            "output_price_per_1k": float(p.output_price_per_1k)
-        }
-        for p in provider.model_pricing
-    ]
     return ProviderDetail(
         id=str(provider.id),
         name=provider.name,
@@ -245,8 +205,7 @@ def provider_to_detail(provider: Provider) -> ProviderDetail:
         enabled=provider.enabled,
         config=provider.config,
         created_at=provider.created_at.isoformat(),
-        api_keys=api_keys,
-        model_pricing=model_pricing
+        api_keys=api_keys
     )
 
 
@@ -511,7 +470,7 @@ async def get_provider(
 
     result = await db.execute(
         select(Provider)
-        .options(selectinload(Provider.api_keys), selectinload(Provider.model_pricing))
+        .options(selectinload(Provider.api_keys))
         .where(Provider.id == provider_uuid)
     )
     provider = result.scalar_one_or_none()
@@ -736,70 +695,6 @@ async def list_provider_keys(
     } for key in keys]
 
 
-@router.get("/providers/{provider_id}/pricing")
-async def list_provider_pricing(
-    provider_id: str,
-    admin_user: User = Depends(get_current_admin_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """获取供应商的模型定价列表"""
-    try:
-        provider_uuid = uuid.UUID(provider_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid provider ID")
-
-    result = await db.execute(
-        select(ModelPricing).where(ModelPricing.provider_id == provider_uuid)
-    )
-    pricings = result.scalars().all()
-
-    return [{
-        "id": str(p.id),
-        "model_name": p.model_name,
-        "input_price_per_1k": float(p.input_price_per_1k),
-        "output_price_per_1k": float(p.output_price_per_1k),
-        "created_at": p.created_at.isoformat()
-    } for p in pricings]
-
-
-@router.post("/providers/{provider_id}/pricing")
-async def add_provider_pricing(
-    provider_id: str,
-    data: ModelPricingCreate,
-    admin_user: User = Depends(get_current_admin_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """添加模型定价"""
-    try:
-        provider_uuid = uuid.UUID(provider_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid provider ID")
-
-    # 检查供应商是否存在
-    result = await db.execute(select(Provider).where(Provider.id == provider_uuid))
-    provider = result.scalar_one_or_none()
-    if not provider:
-        raise HTTPException(status_code=404, detail="Provider not found")
-
-    pricing = ModelPricing(
-        provider_id=provider_uuid,
-        model_name=data.model_name,
-        input_price_per_1k=Decimal(str(data.input_price_per_1k)),
-        output_price_per_1k=Decimal(str(data.output_price_per_1k))
-    )
-    db.add(pricing)
-    await db.commit()
-    await db.refresh(pricing)
-
-    return {
-        "id": str(pricing.id),
-        "model_name": pricing.model_name,
-        "input_price_per_1k": float(pricing.input_price_per_1k),
-        "output_price_per_1k": float(pricing.output_price_per_1k),
-        "created_at": pricing.created_at.isoformat()
-    }
-
-
 @router.delete("/providers/{provider_id}/keys/{key_id}", status_code=status.HTTP_200_OK)
 async def delete_provider_key(
     provider_id: str,
@@ -827,109 +722,6 @@ async def delete_provider_key(
     await db.delete(key)
     await db.commit()
     return {"message": "Key deleted", "id": key_id}
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 模型定价管理接口
-# ─────────────────────────────────────────────────────────────────────
-
-@router.get("/model-pricing", response_model=List[ModelPricingResponse])
-async def list_model_pricing(
-    admin_user: User = Depends(get_current_admin_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """获取模型定价列表"""
-    result = await db.execute(
-        select(ModelPricing).order_by(ModelPricing.model_name)
-    )
-    pricings = result.scalars().all()
-
-    # 获取供应商名称映射
-    provider_result = await db.execute(select(Provider))
-    providers = {str(p.id): p.name for p in provider_result.scalars().all()}
-
-    return [
-        ModelPricingResponse(
-            id=str(p.id),
-            provider_id=str(p.provider_id),
-            provider_name=providers.get(str(p.provider_id)),
-            model_name=p.model_name,
-            input_price_per_1k=float(p.input_price_per_1k),
-            output_price_per_1k=float(p.output_price_per_1k),
-            created_at=p.created_at.isoformat()
-        )
-        for p in pricings
-    ]
-
-
-@router.post("/model-pricing", response_model=ModelPricingResponse, status_code=status.HTTP_201_CREATED)
-async def create_model_pricing(
-    data: ModelPricingCreate,
-    admin_user: User = Depends(get_current_admin_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """创建模型定价"""
-    try:
-        provider_uuid = uuid.UUID(data.provider_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid provider ID")
-
-    pricing = ModelPricing(
-        provider_id=provider_uuid,
-        model_name=data.model_name,
-        input_price_per_1k=Decimal(str(data.input_price_per_1k)),
-        output_price_per_1k=Decimal(str(data.output_price_per_1k))
-    )
-    db.add(pricing)
-    await db.commit()
-    await db.refresh(pricing)
-
-    return ModelPricingResponse(
-        id=str(pricing.id),
-        provider_id=str(pricing.provider_id),
-        provider_name=None,
-        model_name=pricing.model_name,
-        input_price_per_1k=float(pricing.input_price_per_1k),
-        output_price_per_1k=float(pricing.output_price_per_1k),
-        created_at=pricing.created_at.isoformat()
-    )
-
-
-@router.put("/model-pricing/{pricing_id}", response_model=ModelPricingResponse)
-async def update_model_pricing(
-    pricing_id: str,
-    data: ModelPricingUpdate,
-    admin_user: User = Depends(get_current_admin_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """更新模型定价"""
-    try:
-        pricing_uuid = uuid.UUID(pricing_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pricing ID")
-
-    result = await db.execute(select(ModelPricing).where(ModelPricing.id == pricing_uuid))
-    pricing = result.scalar_one_or_none()
-    if not pricing:
-        raise HTTPException(status_code=404, detail="Pricing not found")
-
-    if data.input_price_per_1k is not None:
-        pricing.input_price_per_1k = Decimal(str(data.input_price_per_1k))
-    if data.output_price_per_1k is not None:
-        pricing.output_price_per_1k = Decimal(str(data.output_price_per_1k))
-
-    await db.commit()
-    await db.refresh(pricing)
-
-    return ModelPricingResponse(
-        id=str(pricing.id),
-        provider_id=str(pricing.provider_id),
-        provider_name=None,
-        model_name=pricing.model_name,
-        input_price_per_1k=float(pricing.input_price_per_1k),
-        output_price_per_1k=float(pricing.output_price_per_1k),
-        created_at=pricing.created_at.isoformat()
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────

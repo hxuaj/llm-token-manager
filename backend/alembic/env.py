@@ -19,7 +19,7 @@ from models.user import User  # noqa: F401
 from models.user_api_key import UserApiKey  # noqa: F401
 from models.provider import Provider  # noqa: F401
 from models.provider_api_key import ProviderApiKey  # noqa: F401
-from models.model_pricing import ModelPricing  # noqa: F401
+from models.model_pricing import ModelPricing  # noqa: F401  # deprecated: use ModelCatalog
 from models.request_log import RequestLog  # noqa: F401
 from models.monthly_usage import MonthlyUsage  # noqa: F401
 

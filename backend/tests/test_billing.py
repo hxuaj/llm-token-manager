@@ -123,9 +123,9 @@ async def test_cost_calculation(client, user_api_key, db_session):
     """token 数 × 单价 - cost_usd 计算正确"""
     key_obj, raw_key = user_api_key
 
-    # 创建供应商和定价
+    # 创建供应商和模型目录定价
     from models.provider import Provider
-    from models.model_pricing import ModelPricing
+    from models.model_catalog import ModelCatalog, ModelStatus
     import uuid
 
     provider = Provider(
@@ -137,14 +137,18 @@ async def test_cost_calculation(client, user_api_key, db_session):
     db_session.add(provider)
     await db_session.commit()
 
-    pricing = ModelPricing(
+    # ModelCatalog 定价单位是 USD per 1M tokens
+    # $0.005/1K = $5/1M, $0.015/1K = $15/1M
+    catalog = ModelCatalog(
         id=uuid.uuid4(),
+        model_id="gpt-4o",
+        display_name="GPT-4o",
         provider_id=provider.id,
-        model_name="gpt-4o",
-        input_price_per_1k=Decimal("0.005"),  # $0.005/1K input
-        output_price_per_1k=Decimal("0.015")  # $0.015/1K output
+        input_price=Decimal("5.0"),   # $5/1M = $0.005/1K
+        output_price=Decimal("15.0"),  # $15/1M = $0.015/1K
+        status=ModelStatus.ACTIVE
     )
-    db_session.add(pricing)
+    db_session.add(catalog)
     await db_session.commit()
 
     with patch('routers.gateway.forward_request') as mock_forward:
@@ -173,7 +177,7 @@ async def test_cost_calculation(client, user_api_key, db_session):
     log = result.scalar_one_or_none()
 
     assert log is not None
-    # 1000 input * 0.005/1K + 1000 output * 0.015/1K = 0.005 + 0.015 = 0.020
+    # 1000 input * 5/1M + 1000 output * 15/1M = 0.005 + 0.015 = 0.020
     expected_cost = Decimal("0.020")
     assert abs(Decimal(str(log.cost_usd)) - expected_cost) < Decimal("0.001")
 
