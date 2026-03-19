@@ -4,11 +4,11 @@
  */
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
-import { Layout, Menu, Dropdown, Avatar, Typography, message } from 'antd'
+import { Layout, Menu, Dropdown, Avatar, Typography, message, Tabs, Steps, Alert, Tooltip } from 'antd'
 import {
   ApiOutlined, UserOutlined, KeyOutlined, BarChartOutlined,
   DashboardOutlined, TeamOutlined, CloudServerOutlined,
-  LogoutOutlined, LoginOutlined
+  LogoutOutlined, LoginOutlined, CodeOutlined, CopyOutlined, CheckOutlined
 } from '@ant-design/icons'
 
 import { AuthProvider, useAuth } from './components/AuthContext'
@@ -23,7 +23,58 @@ import AdminProviders from './pages/AdminProviders'
 import AdminUsage from './pages/AdminUsage'
 
 const { Header, Content, Footer, Sider } = Layout
-const { Text } = Typography
+const { Text, Paragraph } = Typography
+
+/**
+ * 可复制代码块组件
+ */
+function CopyableCode({ code, language = 'bash' }) {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    message.success('已复制到剪贴板')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <pre style={{
+        background: '#1e1e1e',
+        color: '#d4d4d4',
+        padding: 16,
+        borderRadius: 4,
+        overflow: 'auto',
+        fontSize: 13,
+        margin: 0,
+      }}>
+        <code>{code}</code>
+      </pre>
+      <Tooltip title={copied ? '已复制' : '复制'}>
+        <div
+          onClick={handleCopy}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: 4,
+            background: copied ? '#52c41a' : '#333',
+            transition: 'background 0.2s',
+          }}
+        >
+          {copied ? (
+            <CheckOutlined style={{ color: '#fff', fontSize: 14 }} />
+          ) : (
+            <CopyOutlined style={{ color: '#fff', fontSize: 14 }} />
+          )}
+        </div>
+      </Tooltip>
+    </div>
+  )
+}
 
 /**
  * 主布局组件
@@ -291,16 +342,103 @@ function HomePage() {
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           快速开始
         </Typography.Title>
-        <Typography.Paragraph>
-          <Typography.Text code>ltm-sk-xxxx</Typography.Text> 是您的平台 Key，使用方法：
-        </Typography.Paragraph>
-        <pre style={{
-          background: '#f5f5f5',
-          padding: 16,
-          borderRadius: 4,
-          overflow: 'auto',
-        }}>
-{`from openai import OpenAI
+        <Paragraph>
+          <Text code>ltm-sk-xxxx</Text> 是您的平台 Key，以下是常用工具的配置方法：
+        </Paragraph>
+
+        <Tabs
+          defaultActiveKey="opencode"
+          items={[
+            {
+              key: 'opencode',
+              label: (
+                <span>
+                  <CodeOutlined style={{ marginRight: 4 }} />
+                  OpenCode
+                </span>
+              ),
+              children: (
+                <div>
+                  <Alert
+                    message="OpenCode 配置指南"
+                    description="将平台 Key 配置到 OpenCode 中，即可使用网关提供的所有模型。推荐使用 OpenCode 客户端。"
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                  <Steps
+                    direction="vertical"
+                    current={-1}
+                    items={[
+                      {
+                        title: '打开配置文件',
+                        description: (
+                          <div>
+                            <Paragraph>OpenCode 配置文件位于：</Paragraph>
+                            <CopyableCode code="~/.config/opencode/opencode.json" />
+                          </div>
+                        ),
+                      },
+                      {
+                        title: '添加 Provider 配置',
+                        description: (
+                          <div>
+                            <Paragraph>在 <Text code>provider</Text> 字段中添加 <Text code>ltm-anthropic</Text> 配置：</Paragraph>
+                            <CopyableCode
+                              code={`{
+  "provider": {
+    "ltm-anthropic": {
+      "name": "LTM Anthropic",
+      "npm": "@ai-sdk/anthropic",
+      "options": {
+        "baseURL": "https://your-gateway.com/v1",
+        "apiKey": "ltm-sk-your-key-here"
+      },
+      "models": {
+        "MiniMax-M2.5": {
+          "name": "MiniMax M2.5",
+          "reasoning": true,
+          "limit": {
+            "context": 204800,
+            "output": 131072
+          }
+        }
+      }
+    }
+  }
+}`}
+                            />
+                            <Alert
+                              message="请将 baseURL 和 apiKey 替换为实际值"
+                              type="warning"
+                              showIcon
+                              style={{ marginTop: 12 }}
+                            />
+                          </div>
+                        ),
+                      },
+                      {
+                        title: '重启 OpenCode',
+                        description: (
+                          <div>
+                            <Paragraph>保存配置文件后，重新启动 OpenCode，使用以下命令切换模型：</Paragraph>
+                            <CopyableCode code="/model ltm-anthropic/MiniMax-M2.5" />
+                          </div>
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'python',
+              label: 'Python SDK',
+              children: (
+                <div>
+                  <Paragraph>使用 OpenAI Python SDK 调用：</Paragraph>
+                  <CopyableCode
+                    code={`from openai import OpenAI
 
 client = OpenAI(
     base_url="https://your-gateway.com/v1",
@@ -311,7 +449,30 @@ response = client.chat.completions.create(
     model="gpt-4o",
     messages=[{"role": "user", "content": "Hello!"}]
 )`}
-        </pre>
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'curl',
+              label: 'cURL',
+              children: (
+                <div>
+                  <Paragraph>使用 cURL 直接调用 API：</Paragraph>
+                  <CopyableCode
+                    code={`curl https://your-gateway.com/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ltm-sk-your-key-here" \\
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'`}
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </div>
   )
