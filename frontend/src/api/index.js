@@ -4,9 +4,12 @@
  */
 import axios from 'axios'
 
+// 获取基础路径（Vite 会自动注入 BASE_URL）
+const baseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.BASE_URL || ''
+
 // 创建 axios 实例
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '',
+  baseURL: baseUrl,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -36,7 +39,9 @@ api.interceptors.response.use(
         // Token 过期或无效，清除本地存储并跳转到登录页
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        window.location.href = '/login'
+        // 使用基础路径跳转
+        const basePath = import.meta.env.BASE_URL || '/'
+        window.location.href = basePath + 'login'
       }
     }
     return Promise.reject(error)

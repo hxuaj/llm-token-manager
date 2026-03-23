@@ -3,6 +3,9 @@
 .env.local
 .env.production
 
+# 生成的配置文件
+nginx.conf
+
 # Python
 __pycache__/
 *.pyc

@@ -568,12 +568,18 @@ function AppRoutes() {
   )
 }
 
+// 获取基础路径（去除尾部斜杠，用于 React Router basename）
+const getBasename = () => {
+  const base = import.meta.env.BASE_URL || '/'
+  return base.endsWith('/') && base.length > 1 ? base.slice(0, -1) : base
+}
+
 /**
  * 根组件
  */
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getBasename()}>
       <AuthProvider>
         <AppRoutes />
       </AuthProvider>

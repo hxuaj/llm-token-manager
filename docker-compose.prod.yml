@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Nginx 反向代理（统一入口）
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${LTM_PORT:-8080}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # 后端 API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/llm_manager
+      - SECRET_KEY=${SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - TESTING=false
+      - REGISTRATION_MODE=${REGISTRATION_MODE:-open}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-}
+      - DEFAULT_MONTHLY_QUOTA_USD=${DEFAULT_MONTHLY_QUOTA_USD:-10.00}
+      - DEFAULT_RPM_LIMIT=${DEFAULT_RPM_LIMIT:-30}
+      - DEFAULT_MAX_KEYS=${DEFAULT_MAX_KEYS:-5}
+      # API 基础路径（用于生成文档链接等）
+      - API_BASE_PATH=${LTM_BASE_PATH:-/ltm}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 数据库
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=llm_manager
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # 前端构建器（构建完成后退出）
+  frontend-builder:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_BASE_PATH: ${LTM_BASE_PATH:-/ltm}
+    volumes:
+      - frontend_dist:/app/dist
+
+volumes:
+  postgres_data:
+  frontend_dist:

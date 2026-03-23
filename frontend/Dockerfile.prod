@@ -1,0 +1,31 @@
+# 构建阶段
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# 复制依赖文件
+COPY package*.json ./
+
+# 安装依赖
+RUN npm ci
+
+# 复制源代码
+COPY . .
+
+# 构建参数：基础路径（如 /ltm）
+ARG VITE_BASE_PATH=/ltm
+ENV VITE_BASE_PATH=$VITE_BASE_PATH
+
+# 构建
+RUN npm run build
+
+# 输出阶段：只保留构建产物
+FROM alpine:latest
+
+WORKDIR /app
+
+# 复制构建产物
+COPY --from=builder /app/dist ./dist
+
+# 用于标记这是前端构建产物
+CMD ["echo", "Frontend build ready"]
