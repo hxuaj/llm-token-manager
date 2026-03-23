@@ -64,17 +64,17 @@ envsubst '${LTM_BASE_PATH}' < nginx.conf.tpl > nginx.conf
 # 停止旧容器
 echo ""
 echo "停止旧容器..."
-docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
+docker compose -f docker-compose.prod.yml down 2>/dev/null || true
 
 # 构建镜像
 echo ""
 echo "构建镜像..."
-docker-compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build --no-cache
 
 # 启动服务
 echo ""
 echo "启动服务..."
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # 等待数据库就绪
 echo ""
@@ -84,14 +84,14 @@ sleep 5
 # 运行数据库迁移
 echo ""
 echo "运行数据库迁移..."
-docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
 
 # 重新构建前端（确保使用最新代码）
 echo ""
 echo "重新构建前端..."
-docker-compose -f docker-compose.prod.yml up -d --force-recreate frontend-builder
+docker compose -f docker-compose.prod.yml up -d --force-recreate frontend-builder
 sleep 5
-docker-compose -f docker-compose.prod.yml restart nginx
+docker compose -f docker-compose.prod.yml restart nginx
 
 # 显示状态
 echo ""
@@ -106,7 +106,7 @@ echo "  - 应用: http://${SERVER_IP}:${LTM_PORT}${LTM_BASE_PATH}/"
 echo "  - API 文档: http://${SERVER_IP}:${LTM_PORT}${LTM_BASE_PATH}/docs"
 echo ""
 echo "常用命令:"
-echo "  查看日志: docker-compose -f docker-compose.prod.yml logs -f"
-echo "  停止服务: docker-compose -f docker-compose.prod.yml down"
-echo "  重启服务: docker-compose -f docker-compose.prod.yml restart"
+echo "  查看日志: docker compose -f docker-compose.prod.yml logs -f"
+echo "  停止服务: docker compose -f docker-compose.prod.yml down"
+echo "  重启服务: docker compose -f docker-compose.prod.yml restart"
 echo ""

@@ -14,6 +14,9 @@ if settings.testing:
     DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 else:
     DATABASE_URL = settings.database_url
+    # 如果是 PostgreSQL URL 但没有指定驱动，自动添加 asyncpg
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # 创建异步引擎
 engine = create_async_engine(

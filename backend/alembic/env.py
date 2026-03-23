@@ -35,6 +35,9 @@ if db_url.startswith("sqlite+aiosqlite"):
     db_url = db_url.replace("sqlite+aiosqlite", "sqlite")
 elif db_url.startswith("postgresql+asyncpg"):
     db_url = db_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+elif db_url.startswith("postgresql://"):
+    # 如果是没有指定驱动的 PostgreSQL URL，添加 psycopg2 驱动
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 config.set_main_option("sqlalchemy.url", db_url)
 
@@ -95,26 +98,22 @@ async def run_async_migrations() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    # 对于 SQLite 使用同步模式（更稳定）
-    if "sqlite" in db_url:
-        from sqlalchemy import engine_from_config
+    # 对于 SQLite 和 PostgreSQL 都使用同步模式（更稳定）
+    from sqlalchemy import engine_from_config
 
-        connectable = engine_from_config(
-            config.get_section(config.config_ini_section, {}),
-            prefix="sqlalchemy.",
-            poolclass=pool.NullPool,
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection, target_metadata=target_metadata
         )
 
-        with connectable.connect() as connection:
-            context.configure(
-                connection=connection, target_metadata=target_metadata
-            )
-
-            with context.begin_transaction():
-                context.run_migrations()
-    else:
-        # 对于 PostgreSQL 使用异步模式
-        asyncio.run(run_async_migrations())
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 if context.is_offline_mode():
