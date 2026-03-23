@@ -5,18 +5,18 @@
 import React, { useState, useEffect } from 'react'
 import {
   Card, Row, Col, Statistic, Progress, Typography, Spin, Empty,
-  Select, Table, Tabs, DatePicker, Tooltip
+  Select, Table, Tabs, DatePicker, Tooltip, Tag, Descriptions, Alert
 } from 'antd'
 import {
   DollarOutlined, ApiOutlined, ThunderboltOutlined,
-  CalendarOutlined, ClockCircleOutlined, KeyOutlined
+  CalendarOutlined, ClockCircleOutlined, KeyOutlined, ApiTwoTone
 } from '@ant-design/icons'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip as RechartsTooltip,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as LineTooltip
 } from 'recharts'
 import dayjs from 'dayjs'
-import { userKeyApi, userUsageApi } from '../api'
+import { userKeyApi, userUsageApi, userPrimaryKeyApi } from '../api'
 
 const { Title, Text } = Typography
 const { RangePicker } = DatePicker
@@ -31,6 +31,7 @@ export default function MyUsage() {
   const [usageByKey, setUsageByKey] = useState(null)
   const [timeline, setTimeline] = useState(null)
   const [basicUsage, setBasicUsage] = useState(null)
+  const [primaryKeys, setPrimaryKeys] = useState(null)
 
   useEffect(() => {
     loadAllData()
@@ -42,17 +43,19 @@ export default function MyUsage() {
       const params = { period }
 
       // 并行加载所有数据
-      const [basicRes, modelRes, keyRes, timelineRes] = await Promise.all([
+      const [basicRes, modelRes, keyRes, timelineRes, primaryKeysRes] = await Promise.all([
         userKeyApi.usage().catch(() => ({ data: null })),
         userUsageApi.byModel(params).catch(() => ({ data: null })),
         userUsageApi.byKey(params).catch(() => ({ data: null })),
         userUsageApi.timeline({ ...params, granularity: 'day' }).catch(() => ({ data: null })),
+        userPrimaryKeyApi.list().catch(() => ({ data: null })),
       ])
 
       setBasicUsage(basicRes.data)
       setUsageByModel(modelRes.data)
       setUsageByKey(keyRes.data)
       setTimeline(timelineRes.data)
+      setPrimaryKeys(primaryKeysRes.data)
     } catch (error) {
       console.error('Failed to load usage data:', error)
     } finally {
@@ -263,6 +266,51 @@ export default function MyUsage() {
           </div>
         )}
       </Card>
+
+      {/* Primary Key 绑定信息 */}
+      {primaryKeys?.primary_keys && Object.keys(primaryKeys.primary_keys).length > 0 && (
+        <Card style={{ marginBottom: 24 }}>
+          <Title level={5} style={{ marginBottom: 16 }}>
+            <ApiTwoTone /> 我的 Primary Key 绑定
+          </Title>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Primary Key 是您在各供应商上的主要绑定 Key。当您的 Primary Key 达到 RPM 限制时，系统会自动使用其他可用 Key。"
+          />
+          <Row gutter={[16, 16]}>
+            {Object.entries(primaryKeys.primary_keys).map(([providerName, keyInfo]) => (
+              <Col xs={24} sm={12} lg={8} key={providerName}>
+                <Card size="small" hoverable>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <Text type="secondary">{providerName}</Text>
+                      <br />
+                      {keyInfo ? (
+                        <>
+                          <Text code style={{ fontSize: 14 }}>
+                            ...{keyInfo.key_suffix}
+                          </Text>
+                          <br />
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            RPM: {keyInfo.rpm_limit || '无限'}/min
+                          </Text>
+                        </>
+                      ) : (
+                        <Text type="secondary">未绑定</Text>
+                      )}
+                    </div>
+                    <Tag color={keyInfo ? 'green' : 'default'}>
+                      {keyInfo ? '已绑定' : '未绑定'}
+                    </Tag>
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </Card>
+      )}
 
       {/* 图表区域 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

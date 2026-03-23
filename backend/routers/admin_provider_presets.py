@@ -441,13 +441,21 @@ async def quick_create_provider(
     encrypted_key = encrypt(data.api_key)
     key_suffix = extract_key_suffix(data.api_key)
 
+    # 根据预设自动确定 Key 类型
+    key_plan = "coding_plan" if preset.is_coding_plan else "standard"
+    plan_models_json = None
+    if preset.is_coding_plan and preset.coding_plan_models:
+        import json
+        plan_models_json = json.dumps(preset.coding_plan_models)
+
     provider_key = ProviderApiKey(
         provider_id=provider.id,
         encrypted_key=encrypted_key,
         key_suffix=key_suffix,
         status=ProviderKeyStatus.ACTIVE.value,
-        key_plan=data.key_plan,
+        key_plan=key_plan,
         rpm_limit=data.rpm_limit or 0,
+        plan_models=plan_models_json,
     )
     db.add(provider_key)
     await db.flush()
@@ -602,6 +610,7 @@ async def quick_create_provider(
             "id": str(provider_key.id),
             "key_suffix": provider_key.key_suffix,
             "status": provider_key.status,
+            "key_plan": provider_key.key_plan,
         },
         discovery_result={
             "total_models": total_models,

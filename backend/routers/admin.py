@@ -719,9 +719,150 @@ async def delete_provider_key(
     if not key:
         raise HTTPException(status_code=404, detail="Key not found")
 
+    # 先从用户绑定中移除该 Key
+    from services.key_assignment import KeyAssignmentService
+    affected = await KeyAssignmentService.remove_deleted_key_from_assignments(
+        key.id, db
+    )
+    logger.info(f"Removed key {key.id} from {affected} user assignments")
+
     await db.delete(key)
     await db.commit()
-    return {"message": "Key deleted", "id": key_id}
+    return {"message": "Key deleted", "id": key_id, "users_affected": affected}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Key 分配管理接口
+# ─────────────────────────────────────────────────────────────────────
+
+class KeyAssignmentResponse(BaseModel):
+    """Key 分配统计响应"""
+    key_id: str
+    key_suffix: str
+    rpm_limit: int
+    assigned_users: int
+
+
+class RebalanceResponse(BaseModel):
+    """重平衡响应"""
+    total_users: int
+    keys: int
+    reassigned: int
+    newly_assigned: int = 0
+
+
+class SetPrimaryKeyRequest(BaseModel):
+    """设置 Primary Key 请求"""
+    provider_name: str
+    key_id: str
+
+
+@router.get("/providers/{provider_name}/key-assignments", response_model=List[KeyAssignmentResponse])
+async def get_key_assignments(
+    provider_name: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取供应商的 Key 分配统计
+
+    返回每个 Key 当前绑定的用户数量
+    """
+    from services.key_assignment import KeyAssignmentService
+
+    try:
+        stats = await KeyAssignmentService.get_key_assignment_stats(provider_name, db)
+        return [
+            KeyAssignmentResponse(
+                key_id=str(s.key_id),
+                key_suffix=s.key_suffix,
+                rpm_limit=s.rpm_limit,
+                assigned_users=s.assigned_users
+            )
+            for s in stats
+        ]
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/providers/{provider_name}/rebalance-keys", response_model=RebalanceResponse)
+async def rebalance_keys(
+    provider_name: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    触发 Key 重平衡
+
+    将用户均匀分布到供应商的各个 Key 上
+    """
+    from services.key_assignment import KeyAssignmentService
+
+    try:
+        result = await KeyAssignmentService.rebalance_provider(provider_name, db)
+        return RebalanceResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/providers/{provider_name}/keys/{key_id}/assigned-users")
+async def get_key_assigned_users(
+    provider_name: str,
+    key_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取绑定到某个 Key 的用户列表（包含 RPM 限制）
+    """
+    from services.key_assignment import KeyAssignmentService
+
+    try:
+        key_uuid = uuid.UUID(key_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid key ID format")
+
+    try:
+        users = await KeyAssignmentService.get_users_assigned_to_key(
+            provider_name, key_uuid, db
+        )
+        return users
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.patch("/users/{user_id}/primary-key", status_code=status.HTTP_200_OK)
+async def set_user_primary_key(
+    user_id: str,
+    data: SetPrimaryKeyRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    设置用户的 Primary Key
+
+    手动指定用户在某个供应商上的主 Key
+    """
+    try:
+        user_uuid = uuid.UUID(user_id)
+        key_uuid = uuid.UUID(data.key_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+    from services.key_assignment import KeyAssignmentService
+
+    try:
+        await KeyAssignmentService.set_user_primary_key(
+            user_uuid, data.provider_name, key_uuid, db
+        )
+        return {
+            "message": "Primary key updated",
+            "user_id": user_id,
+            "provider_name": data.provider_name,
+            "key_id": data.key_id
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ─────────────────────────────────────────────────────────────────────

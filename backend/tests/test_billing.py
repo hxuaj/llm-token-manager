@@ -27,7 +27,13 @@ def _mock_provider_key():
     mock_key.override_output_price = None
     mock_key.is_coding_plan = False
 
-    return (mock_provider, mock_key, "decrypted-key")
+    # 创建 KeySelectionResult mock
+    mock_selection = MagicMock()
+    mock_selection.key = mock_key
+    mock_selection.key_source = "standard"
+    mock_selection.rpm_remaining = -1
+
+    return (mock_provider, mock_key, "decrypted-key", mock_selection)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -41,7 +47,7 @@ async def test_request_log_created(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -87,7 +93,7 @@ async def test_log_contains_key_id(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -153,7 +159,7 @@ async def test_cost_calculation(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -193,7 +199,7 @@ async def test_monthly_usage_accumulated(client, user_api_key, db_session, test_
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
 
@@ -265,7 +271,7 @@ async def test_different_keys_separate_stats(client, test_user, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -304,7 +310,7 @@ async def test_cost_decimal_precision(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -340,7 +346,7 @@ async def test_failed_request_logged(client, user_api_key, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.side_effect = Exception("Provider error")

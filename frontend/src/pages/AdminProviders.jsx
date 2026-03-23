@@ -9,12 +9,13 @@ import React, { useState, useEffect } from 'react'
 import {
   Table, Button, Modal, Form, Input, InputNumber, Switch, Select,
   message, Tag, Space, Card, Typography, Popconfirm, Divider, Steps,
-  Alert, Spin, List, Badge, Tooltip
+  Alert, Spin, List, Badge, Tooltip, Statistic, Descriptions, Drawer
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined,
   CloudServerOutlined, DollarOutlined, CheckCircleOutlined,
-  CloseCircleOutlined, SyncOutlined, ApiOutlined
+  CloseCircleOutlined, SyncOutlined, ApiOutlined, TeamOutlined,
+  ReloadOutlined, UserOutlined, EyeOutlined
 } from '@ant-design/icons'
 import { adminProviderApi, adminModelApi } from '../api'
 
@@ -49,6 +50,17 @@ export default function AdminProviders() {
   // 模型目录相关状态
   const [providerModels, setProviderModels] = useState([])
   const [modelsLoading, setModelsLoading] = useState(false)
+
+  // Key 分配相关状态
+  const [keyAssignments, setKeyAssignments] = useState([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+  const [rebalancing, setRebalancing] = useState(false)
+
+  // 分配用户抽屉相关状态
+  const [usersDrawerVisible, setUsersDrawerVisible] = useState(false)
+  const [selectedKeyInfo, setSelectedKeyInfo] = useState(null)
+  const [assignedUsersList, setAssignedUsersList] = useState([])
+  const [assignedUsersLoading, setAssignedUsersLoading] = useState(false)
 
   useEffect(() => {
     loadProviders()
@@ -200,12 +212,71 @@ export default function AdminProviders() {
 
   const handleManageKeys = async (record) => {
     setSelectedProvider(record)
+    setAssignmentsLoading(true)
     try {
-      const response = await adminProviderApi.keys(record.id)
-      setProviderKeys(response.data || [])
+      // 并行加载 Key 列表和分配统计
+      const [keysRes, assignmentsRes] = await Promise.all([
+        adminProviderApi.keys(record.id),
+        adminProviderApi.keyAssignments(record.name).catch(() => ({ data: [] }))
+      ])
+      setProviderKeys(keysRes.data || [])
+      setKeyAssignments(assignmentsRes.data || [])
       setKeyModalVisible(true)
     } catch (error) {
       message.error('加载 Key 列表失败')
+    } finally {
+      setAssignmentsLoading(false)
+    }
+  }
+
+  const handleRebalanceKeys = async () => {
+    if (!selectedProvider) return
+
+    setRebalancing(true)
+    try {
+      const response = await adminProviderApi.rebalanceKeys(selectedProvider.name)
+      const { reassigned, newly_assigned, total_users } = response.data
+      let msg = `重平衡完成！共处理 ${total_users} 个用户`
+      if (newly_assigned > 0) {
+        msg += `，新分配 ${newly_assigned} 个用户`
+      }
+      if (reassigned > 0) {
+        msg += `，重新分配 ${reassigned} 个用户`
+      }
+      message.success(msg)
+      // 刷新分配统计
+      const assignmentsRes = await adminProviderApi.keyAssignments(selectedProvider.name)
+      setKeyAssignments(assignmentsRes.data || [])
+    } catch (error) {
+      message.error(error.response?.data?.detail || '重平衡失败')
+    } finally {
+      setRebalancing(false)
+    }
+  }
+
+  // 获取 Key 的分配用户数
+  const getKeyAssignedUsers = (keyId) => {
+    const assignment = keyAssignments.find(a => a.key_id === keyId)
+    return assignment?.assigned_users || 0
+  }
+
+  // 显示分配给某个 Key 的用户列表
+  const handleShowAssignedUsers = async (keyRecord) => {
+    setSelectedKeyInfo(keyRecord)
+    setUsersDrawerVisible(true)
+    setAssignedUsersLoading(true)
+
+    try {
+      const response = await adminProviderApi.keyAssignedUsers(
+        selectedProvider.name,
+        keyRecord.id
+      )
+      setAssignedUsersList(response.data || [])
+    } catch (error) {
+      message.error('加载用户列表失败')
+      setAssignedUsersList([])
+    } finally {
+      setAssignedUsersLoading(false)
     }
   }
 
@@ -379,10 +450,43 @@ export default function AdminProviders() {
       ),
     },
     {
+      title: 'Key 类型',
+      dataIndex: 'key_plan',
+      key: 'key_plan',
+      render: (plan) => (
+        <Tag color={plan === 'coding_plan' ? 'purple' : 'default'}>
+          {plan === 'coding_plan' ? 'Coding Plan' : 'Standard'}
+        </Tag>
+      ),
+    },
+    {
       title: 'RPM 限制',
       dataIndex: 'rpm_limit',
       key: 'rpm_limit',
       render: (rpm) => rpm || '无限制',
+    },
+    {
+      title: (
+        <Tooltip title="绑定该 Key 为 Primary Key 的用户数">
+          <span><UserOutlined /> 分配用户</span>
+        </Tooltip>
+      ),
+      dataIndex: 'assigned_users',
+      key: 'assigned_users',
+      render: (_, record) => {
+        const count = getKeyAssignedUsers(record.id)
+        return (
+          <Badge
+            count={count}
+            showZero
+            color={count === 0 ? '#d9d9d9' : '#1890ff'}
+            overflowCount={999}
+            style={{ cursor: 'pointer' }}
+            onClick={() => count > 0 && handleShowAssignedUsers(record)}
+            title={count > 0 ? '点击查看用户列表' : '暂无用户'}
+          />
+        )
+      },
     },
     {
       title: '创建时间',
@@ -395,7 +499,7 @@ export default function AdminProviders() {
       key: 'action',
       render: (_, record) => (
         <Popconfirm
-          title="确定要删除这个 Key 吗？"
+          title="确定要删除这个 Key 吗？已绑定该 Key 的用户将自动解除绑定。"
           onConfirm={() => handleDeleteKey(record.id)}
           okText="确定"
           cancelText="取消"
@@ -736,10 +840,37 @@ export default function AdminProviders() {
         onCancel={() => {
           setKeyModalVisible(false)
           keyForm.resetFields()
+          setKeyAssignments([])
         }}
         footer={null}
-        width={700}
+        width={800}
       >
+        {/* Key 分配统计概览 */}
+        {keyAssignments.length > 0 && (
+          <Alert
+            type="info"
+            style={{ marginBottom: 16 }}
+            message={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <TeamOutlined />
+                  <span>共 {keyAssignments.reduce((sum, k) => sum + k.assigned_users, 0)} 个用户绑定到此供应商的 Key</span>
+                </Space>
+                <Tooltip title="重新均匀分配用户到各个 Key">
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    loading={rebalancing}
+                    onClick={handleRebalanceKeys}
+                  >
+                    重平衡
+                  </Button>
+                </Tooltip>
+              </div>
+            }
+          />
+        )}
+
         <div style={{ marginBottom: 24 }}>
           <Title level={5}>添加新 Key</Title>
           <Form form={keyForm} onFinish={handleAddKey} layout="inline">
@@ -764,13 +895,15 @@ export default function AdminProviders() {
         <Divider />
 
         <Title level={5}>已有 Key</Title>
-        <Table
-          columns={keyColumns}
-          dataSource={providerKeys}
-          rowKey="id"
-          pagination={false}
-          size="small"
-        />
+        <Spin spinning={assignmentsLoading}>
+          <Table
+            columns={keyColumns}
+            dataSource={providerKeys}
+            rowKey="id"
+            pagination={false}
+            size="small"
+          />
+        </Spin>
       </Modal>
 
       {/* 定价管理弹窗 */}
@@ -848,6 +981,62 @@ export default function AdminProviders() {
           size="small"
         />
       </Modal>
+
+      {/* 分配用户列表抽屉 */}
+      <Drawer
+        title={
+          <Space>
+            <UserOutlined />
+            <span>分配用户 - ...{selectedKeyInfo?.key_suffix}</span>
+          </Space>
+        }
+        placement="right"
+        width={600}
+        open={usersDrawerVisible}
+        onClose={() => {
+          setUsersDrawerVisible(false)
+          setSelectedKeyInfo(null)
+          setAssignedUsersList([])
+        }}
+      >
+        {assignedUsersLoading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <Spin />
+          </div>
+        ) : assignedUsersList.length === 0 ? (
+          <Alert type="info" message="暂无用户绑定此 Key" />
+        ) : (
+          <>
+            <Alert
+              type="info"
+              style={{ marginBottom: 16 }}
+              message={`共 ${assignedUsersList.length} 个用户绑定此 Key`}
+            />
+            <Table
+              dataSource={assignedUsersList}
+              rowKey="id"
+              size="small"
+              pagination={assignedUsersList.length > 10 ? { pageSize: 10 } : false}
+              columns={[
+                {
+                  title: '用户名',
+                  dataIndex: 'username',
+                  key: 'username',
+                  width: 150,
+                  render: (name) => <Text strong>{name}</Text>,
+                },
+                {
+                  title: '邮箱',
+                  dataIndex: 'email',
+                  key: 'email',
+                  ellipsis: true,
+                  render: (email) => <Text type="secondary">{email}</Text>,
+                },
+              ]}
+            />
+          </>
+        )}
+      </Drawer>
     </div>
   )
 }

@@ -10,6 +10,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from decimal import Decimal
 import uuid
+from sqlalchemy import select
 
 
 class TestProviderPresets:
@@ -578,3 +579,136 @@ class TestQuickCreateProvider:
         model_without_price = result.scalar_one_or_none()
         assert model_without_price is not None
         assert model_without_price.is_pricing_confirmed is False  # 无定价的模型
+
+    @pytest.mark.asyncio
+    async def test_quick_create_standard_provider_sets_standard_key_plan(
+        self, client, admin_token, db_session
+    ):
+        """标准供应商应该创建 standard 类型的 Key"""
+        from routers.admin_provider_presets import ModelsDevModel
+        from models.provider_api_key import ProviderApiKey, KeyPlan
+
+        # Mock models.dev 返回模型
+        with patch('routers.admin_provider_presets.fetch_models_from_models_dev') as mock_fetch:
+            mock_fetch.return_value = [
+                ModelsDevModel(
+                    model_id="gpt-4o",
+                    display_name="GPT-4o",
+                    input_price=Decimal("2.5"),
+                    output_price=Decimal("10.0"),
+                ),
+            ]
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "openai",
+                    "api_key": "sk-test-key-standard"
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["provider"]["name"] == "openai"
+
+        # 验证 Key 类型为 standard
+        result = await db_session.execute(
+            select(ProviderApiKey).where(
+                ProviderApiKey.provider_id == uuid.UUID(data["provider"]["id"])
+            )
+        )
+        api_key = result.scalar_one_or_none()
+        assert api_key is not None
+        assert api_key.key_plan == KeyPlan.STANDARD.value
+        assert api_key.plan_models is None
+
+    @pytest.mark.asyncio
+    async def test_quick_create_coding_plan_provider_sets_coding_plan_key(
+        self, client, admin_token, db_session
+    ):
+        """Coding Plan 供应商应该自动创建 coding_plan 类型的 Key"""
+        from routers.admin_provider_presets import ModelsDevModel
+        from models.provider_api_key import ProviderApiKey, KeyPlan
+
+        # Mock models.dev 返回模型
+        with patch('routers.admin_provider_presets.fetch_models_from_models_dev') as mock_fetch:
+            mock_fetch.return_value = [
+                ModelsDevModel(
+                    model_id="glm-5",
+                    display_name="GLM-5",
+                    input_price=Decimal("0"),
+                    output_price=Decimal("0"),
+                ),
+            ]
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "zhipuai-coding-plan",
+                    "api_key": "zhipu-test-key-12345678"
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["provider"]["name"] == "zhipu"
+
+        # 验证 Key 类型为 coding_plan
+        result = await db_session.execute(
+            select(ProviderApiKey).where(
+                ProviderApiKey.provider_id == uuid.UUID(data["provider"]["id"])
+            )
+        )
+        api_key = result.scalar_one_or_none()
+        assert api_key is not None
+        assert api_key.key_plan == KeyPlan.CODING_PLAN.value
+        # 验证 plan_models 已设置
+        assert api_key.plan_models is not None
+        import json
+        plan_models_list = json.loads(api_key.plan_models)
+        assert "glm-5" in plan_models_list
+
+    @pytest.mark.asyncio
+    async def test_quick_create_minimax_coding_plan_sets_correct_key_plan(
+        self, client, admin_token, db_session
+    ):
+        """MiniMax Coding Plan 供应商应该自动创建 coding_plan 类型的 Key"""
+        from routers.admin_provider_presets import ModelsDevModel
+        from models.provider_api_key import ProviderApiKey, KeyPlan
+
+        # Mock models.dev 返回模型
+        with patch('routers.admin_provider_presets.fetch_models_from_models_dev') as mock_fetch:
+            mock_fetch.return_value = [
+                ModelsDevModel(
+                    model_id="MiniMax-M2.5",
+                    display_name="MiniMax M2.5",
+                    input_price=Decimal("0"),
+                    output_price=Decimal("0"),
+                ),
+            ]
+
+            response = await client.post(
+                "/api/admin/providers/quick-create",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={
+                    "provider_preset": "minimax-cn-coding-plan",
+                    "api_key": "minimax-test-key-12345678"
+                }
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["provider"]["name"] == "minimax"
+
+        # 验证 Key 类型为 coding_plan
+        result = await db_session.execute(
+            select(ProviderApiKey).where(
+                ProviderApiKey.provider_id == uuid.UUID(data["provider"]["id"])
+            )
+        )
+        api_key = result.scalar_one_or_none()
+        assert api_key is not None
+        assert api_key.key_plan == KeyPlan.CODING_PLAN.value
+        assert api_key.plan_models is not None

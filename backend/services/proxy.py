@@ -9,6 +9,7 @@
 - 费用计算
 """
 import json
+import uuid
 from decimal import Decimal
 from typing import Dict, Any, AsyncGenerator, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +19,13 @@ from models.provider import Provider
 from models.provider_api_key import ProviderApiKey, ProviderKeyStatus
 from models.model_catalog import ModelCatalog, ModelStatus
 from services.encryption import decrypt
-from services.key_selector import select_provider_key, NoAvailableKeyError
+from services.key_selector import (
+    select_provider_key,
+    select_provider_key_with_source,
+    NoAvailableKeyError,
+    RateLimitExceededError,
+    KeySelectionResult
+)
 from services.providers.base import BaseAdapter
 from services.providers.openai_adapter import OpenAIAdapter
 from services.providers.anthropic_adapter import AnthropicAdapter
@@ -100,7 +107,8 @@ def create_adapter(provider_name: str, base_url: str, api_key: str) -> BaseAdapt
 async def get_provider_and_key(
     provider_name: str,
     model_id: str,
-    db: AsyncSession
+    db: AsyncSession,
+    user_id: Optional[uuid.UUID] = None
 ) -> Optional[Tuple[Provider, ProviderApiKey, str]]:
     """
     获取供应商和可用的 API Key（使用新的 Key 选择逻辑）
@@ -109,6 +117,7 @@ async def get_provider_and_key(
         provider_name: 供应商名称
         model_id: 模型 ID（用于 coding_plan Key 选择）
         db: 数据库 session
+        user_id: 用户 ID（用于 primary key 分配）
 
     Returns:
         (Provider, ProviderApiKey, decrypted_key) 或 None
@@ -127,7 +136,7 @@ async def get_provider_and_key(
 
     # 使用新的 Key 选择逻辑
     try:
-        api_key = await select_provider_key(provider, model_id, db)
+        api_key = await select_provider_key(provider, model_id, db, user_id)
     except NoAvailableKeyError:
         return None
 
@@ -135,6 +144,50 @@ async def get_provider_and_key(
     decrypted_key = decrypt(api_key.encrypted_key)
 
     return provider, api_key, decrypted_key
+
+
+async def get_provider_and_key_with_source(
+    provider_name: str,
+    model_id: str,
+    db: AsyncSession,
+    user_id: Optional[uuid.UUID] = None
+) -> Optional[Tuple[Provider, ProviderApiKey, str, KeySelectionResult]]:
+    """
+    获取供应商和可用的 API Key，返回详细信息
+
+    Args:
+        provider_name: 供应商名称
+        model_id: 模型 ID（用于 coding_plan Key 选择）
+        db: 数据库 session
+        user_id: 用户 ID（用于 primary key 分配）
+
+    Returns:
+        (Provider, ProviderApiKey, decrypted_key, KeySelectionResult) 或 None
+
+    Raises:
+        RateLimitExceededError: 所有 Key 的 RPM 都已超限
+    """
+    # 查询供应商
+    result = await db.execute(
+        select(Provider).where(
+            Provider.name == provider_name,
+            Provider.enabled == True
+        )
+    )
+    provider = result.scalar_one_or_none()
+
+    if not provider:
+        return None
+
+    # 使用新的 Key 选择逻辑（带 source 信息）
+    selection_result = await select_provider_key_with_source(
+        provider, model_id, db, user_id
+    )
+
+    # 解密 Key
+    decrypted_key = decrypt(selection_result.key.encrypted_key)
+
+    return provider, selection_result.key, decrypted_key, selection_result
 
 
 async def calculate_request_cost(

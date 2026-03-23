@@ -4,24 +4,36 @@
 import React, { useState, useEffect } from 'react'
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, Switch, message,
-  Tag, Space, Card, Typography, Popconfirm, Descriptions
+  Tag, Space, Card, Typography, Popconfirm, Descriptions, Divider, Spin,
+  Badge, Tooltip, Alert
 } from 'antd'
 import {
-  EditOutlined, KeyOutlined, EyeOutlined, SearchOutlined
+  EditOutlined, KeyOutlined, EyeOutlined, SearchOutlined,
+  ApiOutlined, SettingOutlined, UserOutlined
 } from '@ant-design/icons'
-import { adminUserApi } from '../api'
+import { adminUserApi, adminProviderApi } from '../api'
 
-const { Title } = Typography
+const { Title, Text } = Typography
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [detailModalVisible, setDetailModalVisible] = useState(false)
+  const [primaryKeyModalVisible, setPrimaryKeyModalVisible] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   const [userKeys, setUserKeys] = useState([])
   const [editForm] = Form.useForm()
   const [searchText, setSearchText] = useState('')
+
+  // Primary Key 管理相关状态
+  const [userPrimaryKeys, setUserPrimaryKeys] = useState({})
+  const [providers, setProviders] = useState([])
+  const [providerKeys, setProviderKeys] = useState([])
+  const [selectedProviderName, setSelectedProviderName] = useState(null)
+  const [savingPrimaryKey, setSavingPrimaryKey] = useState(false)
+  const [loadingProviderKeys, setLoadingProviderKeys] = useState(false)
+  const [primaryKeyForm] = Form.useForm()
 
   useEffect(() => {
     loadUsers()
@@ -85,6 +97,77 @@ export default function AdminUsers() {
     }
   }
 
+  // Primary Key 管理函数
+  const handleManagePrimaryKeys = async (record) => {
+    setSelectedUser(record)
+    setUserPrimaryKeys(record.primary_provider_keys || {})
+    try {
+      // 加载供应商列表
+      const response = await adminProviderApi.list()
+      setProviders(response.data || [])
+      setPrimaryKeyModalVisible(true)
+    } catch (error) {
+      message.error('加载供应商列表失败')
+    }
+  }
+
+  const handleProviderSelect = async (providerName) => {
+    setSelectedProviderName(providerName)
+    setLoadingProviderKeys(true)
+    setProviderKeys([])
+
+    const provider = providers.find(p => p.name === providerName)
+    if (provider) {
+      try {
+        const keysRes = await adminProviderApi.keys(provider.id)
+        setProviderKeys(keysRes.data || [])
+        // 设置当前选中的 Key
+        const currentKeyId = userPrimaryKeys[providerName]
+        primaryKeyForm.setFieldsValue({ key_id: currentKeyId || undefined })
+      } catch (error) {
+        setProviderKeys([])
+      } finally {
+        setLoadingProviderKeys(false)
+      }
+    } else {
+      setLoadingProviderKeys(false)
+    }
+  }
+
+  const handleSetPrimaryKey = async (values) => {
+    if (!selectedUser || !selectedProviderName || !values.key_id) {
+      message.warning('请选择供应商和 Key')
+      return
+    }
+
+    setSavingPrimaryKey(true)
+    try {
+      await adminUserApi.setPrimaryKey(selectedUser.id, {
+        provider_name: selectedProviderName,
+        key_id: values.key_id
+      })
+      message.success('Primary Key 更新成功')
+      // 更新本地状态
+      setUserPrimaryKeys(prev => ({
+        ...prev,
+        [selectedProviderName]: values.key_id
+      }))
+      // 刷新用户列表
+      loadUsers()
+    } catch (error) {
+      message.error(error.response?.data?.detail || '设置失败')
+    } finally {
+      setSavingPrimaryKey(false)
+    }
+  }
+
+  // 获取 Key 的友好显示名称
+  const getKeyDisplayName = (keyId) => {
+    if (!keyId || !providerKeys.length) return null
+    const key = providerKeys.find(k => k.id === keyId)
+    return key ? `...${key.key_suffix}` : keyId
+  }
+
   const columns = [
     {
       title: '用户名',
@@ -127,24 +210,19 @@ export default function AdminUsers() {
       render: (quota) => `$${parseFloat(quota || 0).toFixed(2)}`,
     },
     {
-      title: 'RPM 限制',
-      dataIndex: 'rpm_limit',
-      key: 'rpm_limit',
-      render: (rpm) => `${rpm || 30}/min`,
-    },
-    {
       title: 'Key 数量',
       dataIndex: 'key_count',
       key: 'key_count',
-      render: (count) => count || 0,
+      render: (count) => <Badge count={count || 0} showZero color="blue" />,
     },
     {
       title: '操作',
       key: 'action',
       render: (_, record) => (
-        <Space>
+        <Space wrap>
           <Button
             type="link"
+            size="small"
             icon={<EyeOutlined />}
             onClick={() => handleViewDetail(record)}
           >
@@ -152,10 +230,19 @@ export default function AdminUsers() {
           </Button>
           <Button
             type="link"
+            size="small"
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
           >
             编辑
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<SettingOutlined />}
+            onClick={() => handleManagePrimaryKeys(record)}
+          >
+            Primary Key
           </Button>
         </Space>
       ),
@@ -204,7 +291,7 @@ export default function AdminUsers() {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" danger>
+            <Button type="link" danger size="small">
               吊销
             </Button>
           </Popconfirm>
@@ -218,7 +305,7 @@ export default function AdminUsers() {
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
           <Title level={4} style={{ margin: 0 }}>
-            <KeyOutlined /> 用户管理
+            <UserOutlined /> 用户管理
           </Title>
           <Input
             placeholder="搜索用户名或邮箱"
@@ -312,6 +399,134 @@ export default function AdminUsers() {
               pagination={false}
               size="small"
             />
+          </div>
+        )}
+      </Modal>
+
+      {/* Primary Key 管理弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <SettingOutlined />
+            <span>管理 Primary Key - {selectedUser?.username}</span>
+          </Space>
+        }
+        open={primaryKeyModalVisible}
+        onCancel={() => {
+          setPrimaryKeyModalVisible(false)
+          setSelectedProviderName(null)
+          setProviderKeys([])
+        }}
+        destroyOnHidden
+        footer={null}
+        width={600}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Primary Key 是用户在该供应商上的主要绑定 Key。当用户的 Primary Key RPM 满时，会自动溢出到其他 Key。"
+        />
+
+        <Form layout="vertical">
+          <Form.Item label="选择供应商">
+            <Select
+              placeholder="选择供应商"
+              onChange={handleProviderSelect}
+              value={selectedProviderName}
+            >
+              {providers.map(p => (
+                <Select.Option key={p.id} value={p.name}>
+                  <Space>
+                    <span>{p.display_name || p.name}</span>
+                    {userPrimaryKeys[p.name] && (
+                      <Tag color="green" style={{ marginLeft: 8 }}>
+                        已绑定
+                      </Tag>
+                    )}
+                  </Space>
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Form>
+
+        {selectedProviderName && (
+          <Spin spinning={loadingProviderKeys}>
+            <Card size="small" title={`设置 ${selectedProviderName} 的 Primary Key`}>
+              <Form
+                form={primaryKeyForm}
+                onFinish={handleSetPrimaryKey}
+                layout="vertical"
+              >
+                <Form.Item
+                  name="key_id"
+                  label="选择 Key"
+                  rules={[{ required: true, message: '请选择一个 Key' }]}
+                >
+                  <Select
+                    placeholder="选择 Primary Key"
+                    allowClear
+                  >
+                    {providerKeys
+                      .filter(k => k.status === 'active')
+                      .map(k => (
+                        <Select.Option key={k.id} value={k.id}>
+                          <Space>
+                            <Text code>...{k.key_suffix}</Text>
+                            <Text type="secondary">
+                              RPM: {k.rpm_limit || '无限'}
+                            </Text>
+                          </Space>
+                        </Select.Option>
+                      ))}
+                  </Select>
+                </Form.Item>
+
+                <Form.Item>
+                  <Space>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      loading={savingPrimaryKey}
+                    >
+                      保存
+                    </Button>
+                    <Button onClick={() => {
+                      setSelectedProviderName(null)
+                      setProviderKeys([])
+                      primaryKeyForm.resetFields()
+                    }}>
+                      取消
+                    </Button>
+                  </Space>
+                </Form.Item>
+              </Form>
+            </Card>
+          </Spin>
+        )}
+
+        {/* 当前绑定的 Primary Keys */}
+        {Object.keys(userPrimaryKeys).length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <Divider />
+            <Title level={5}>当前 Primary Key 绑定</Title>
+            <Descriptions bordered size="small" column={1}>
+              {Object.entries(userPrimaryKeys).map(([providerName, keyId]) => (
+                <Descriptions.Item key={providerName} label={providerName}>
+                  <Space>
+                    <Text code>{keyId ? `${keyId.slice(0, 8)}...` : '未设置'}</Text>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => handleProviderSelect(providerName)}
+                    >
+                      修改
+                    </Button>
+                  </Space>
+                </Descriptions.Item>
+              ))}
+            </Descriptions>
           </div>
         )}
       </Modal>

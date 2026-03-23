@@ -4,8 +4,10 @@
 提供：
 - GET /api/user/me: 获取当前用户信息
 - GET /api/user/usage: 获取用户用量统计
+- GET /api/user/primary-keys: 获取用户的 Primary Key 绑定
 """
 from datetime import datetime
+from typing import Dict, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,4 +99,51 @@ async def get_user_usage(
         quota_used=float(used_cost),
         quota_limit=float(current_user.monthly_quota_usd),
         rpm_limit=current_user.rpm_limit
+    )
+
+
+class PrimaryKeyInfo(BaseModel):
+    """Primary Key 信息"""
+    key_id: str
+    key_suffix: str
+    rpm_limit: int
+
+
+class PrimaryKeysResponse(BaseModel):
+    """Primary Keys 响应"""
+    user_id: str
+    primary_keys: Dict[str, Optional[PrimaryKeyInfo]]
+
+
+@router.get("/primary-keys", response_model=PrimaryKeysResponse)
+async def get_primary_keys(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取当前用户的 Primary Key 绑定
+
+    返回每个供应商上绑定的主 Key 信息
+    """
+    from services.key_assignment import KeyAssignmentService
+
+    primary_keys = await KeyAssignmentService.get_user_primary_keys(
+        current_user.id, db
+    )
+
+    # 转换为响应格式
+    result = {}
+    for provider_name, key_info in primary_keys.items():
+        if key_info:
+            result[provider_name] = PrimaryKeyInfo(
+                key_id=key_info["key_id"],
+                key_suffix=key_info["key_suffix"],
+                rpm_limit=key_info["rpm_limit"]
+            )
+        else:
+            result[provider_name] = None
+
+    return PrimaryKeysResponse(
+        user_id=str(current_user.id),
+        primary_keys=result
     )

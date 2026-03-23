@@ -9,6 +9,7 @@ pytest 全局配置和 fixtures
 - Mock 供应商 API
 """
 import os
+import uuid
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -229,3 +230,80 @@ def mock_anthropic():
     """
     # TODO: Step 5 实现后添加
     pass
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 供应商和 Key fixtures（用于 Key 软分配测试）
+# ─────────────────────────────────────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def test_provider(db_session: AsyncSession):
+    """创建一个测试供应商"""
+    from models.provider import Provider
+
+    provider = Provider(
+        name="test_provider",
+        display_name="Test Provider",
+        base_url="https://api.test.com",
+        api_format="openai",
+        enabled=True
+    )
+    db_session.add(provider)
+    await db_session.commit()
+    await db_session.refresh(provider)
+    return provider
+
+
+@pytest_asyncio.fixture
+async def test_provider_keys(test_provider, db_session: AsyncSession):
+    """创建多个测试 Key"""
+    from models.provider_api_key import ProviderApiKey, ProviderKeyStatus, KeyPlan
+    from services.encryption import encrypt, extract_key_suffix
+
+    keys = []
+    for i in range(3):
+        raw_key = f"sk-test-key-{i}-{uuid.uuid4().hex[:8]}"
+        encrypted_key = encrypt(raw_key)
+        key_suffix = extract_key_suffix(raw_key)
+
+        key = ProviderApiKey(
+            provider_id=test_provider.id,
+            encrypted_key=encrypted_key,
+            key_suffix=key_suffix,
+            rpm_limit=60,
+            status=ProviderKeyStatus.ACTIVE.value,
+            key_plan=KeyPlan.STANDARD.value
+        )
+        db_session.add(key)
+        keys.append(key)
+
+    await db_session.commit()
+    for key in keys:
+        await db_session.refresh(key)
+    return keys
+
+
+@pytest_asyncio.fixture
+async def user_with_primary_key(test_user, test_provider, test_provider_keys, db_session: AsyncSession):
+    """已分配 Primary Key 的用户"""
+    # 绑定第一个 Key 作为 Primary Key
+    test_user.primary_provider_keys = {
+        test_provider.name: str(test_provider_keys[0].id)
+    }
+    await db_session.commit()
+    await db_session.refresh(test_user)
+    return test_user
+
+
+@pytest_asyncio.fixture
+async def rpm_tracker():
+    """创建一个独立的 RPMTracker 实例用于测试"""
+    from services.rpm_tracker import RPMTracker
+
+    # 创建新实例（不使用单例）
+    tracker = RPMTracker.__new__(RPMTracker)
+    tracker._initialized = False
+    tracker.__init__()
+    yield tracker
+    # 清理
+    await tracker.reset()

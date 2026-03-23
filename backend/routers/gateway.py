@@ -30,6 +30,7 @@ from services.proxy import (
     forward_request_stream,
     get_available_models,
     get_provider_and_key,
+    get_provider_and_key_with_source,
     calculate_request_cost
 )
 from services.unified_router import get_unified_router
@@ -40,7 +41,7 @@ from services.quota import (
     get_monthly_usage
 )
 from services.billing import log_request
-from services.key_selector import select_provider_key, NoAvailableKeyError
+from services.key_selector import select_provider_key, NoAvailableKeyError, RateLimitExceededError
 from services.model_status import check_model_deprecation
 
 router = APIRouter()
@@ -183,14 +184,16 @@ async def chat_completions(
     is_deprecated = await check_model_deprecation(request.model, db)
 
     try:
-        # 获取供应商和 Key（用于费用计算）
-        result = await get_provider_and_key(provider_name, request.model, db)
+        # 获取供应商和 Key（用于费用计算），使用新的带 source 信息的函数
+        result = await get_provider_and_key_with_source(
+            provider_name, request.model, db, user.id
+        )
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"No available API key for provider '{provider_name}'"
             )
-        provider, provider_api_key, _ = result
+        provider, provider_api_key, _, key_selection = result
 
         if request.stream:
             # 流式响应
@@ -256,7 +259,9 @@ async def chat_completions(
             response["x_ltm"] = {
                 "cost_usd": float(cost_usd),
                 "remaining_quota_usd": round(remaining_quota, 4),
-                "key_id_suffix": f"...{provider_api_key.key_suffix}"
+                "key_id_suffix": f"...{provider_api_key.key_suffix}",
+                "key_source": key_selection.key_source,
+                "rpm_remaining": key_selection.rpm_remaining
             }
 
             # 构建响应头
@@ -304,6 +309,29 @@ async def chat_completions(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e)
+        )
+    except RateLimitExceededError as e:
+        # 所有 Key 的 RPM 都已超限
+        latency_ms = int((time.time() - start_time) * 1000)
+        await log_request(
+            user_id=user.id,
+            key_id=api_key.id,
+            model=request.model,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=latency_ms,
+            status=RequestStatus.ERROR,
+            error_message=str(e),
+            db=db
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "type": "provider_rate_limited",
+                "message": f"All keys for provider '{e.provider_name}' have exceeded RPM limit",
+                "provider": e.provider_name,
+                "tried_keys": e.tried_keys
+            }
         )
     except Exception as e:
         # 记录失败请求

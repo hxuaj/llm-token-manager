@@ -19,6 +19,11 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时初始化数据库
     await init_db()
+
+    # 初始化 RPMTracker 单例
+    from services.rpm_tracker import get_rpm_tracker
+    get_rpm_tracker()
+
     yield
     # 关闭时清理资源
     await close_db()

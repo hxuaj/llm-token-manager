@@ -130,6 +130,19 @@ async def register(
     await db.commit()
     await db.refresh(new_user)
 
+    # 自动分配 Primary Keys（软分配）
+    try:
+        from services.key_assignment import KeyAssignmentService
+        await KeyAssignmentService.assign_primary_keys_for_new_user(
+            new_user.id, db
+        )
+    except Exception as e:
+        # 分配失败不影响注册
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Failed to assign primary keys for user {new_user.id}: {e}"
+        )
+
     return user_to_response(new_user)
 
 

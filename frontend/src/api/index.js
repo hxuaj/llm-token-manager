@@ -291,4 +291,55 @@ export const adminModelApi = {
   batchActivate: (providerId, data) => api.post(`/api/admin/providers/${providerId}/models/batch-activate`, data),
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Key 分配管理接口（软分配功能）
+// ─────────────────────────────────────────────────────────────────────
+
+// 扩展 adminProviderApi
+const _adminProviderApiExtra = {
+  /**
+   * 获取供应商的 Key 分配统计
+   */
+  keyAssignments: (providerName) =>
+    api.get(`/api/admin/providers/${providerName}/key-assignments`),
+
+  /**
+   * 获取某个 Key 的分配用户列表
+   */
+  keyAssignedUsers: (providerName, keyId) =>
+    api.get(`/api/admin/providers/${providerName}/keys/${keyId}/assigned-users`),
+
+  /**
+   * 触发 Key 重平衡
+   */
+  rebalanceKeys: (providerName) =>
+    api.post(`/api/admin/providers/${providerName}/rebalance-keys`),
+}
+
+// 合并到 adminProviderApi
+Object.assign(adminProviderApi, _adminProviderApiExtra)
+
+// 扩展 adminUserApi
+const _adminUserApiExtra = {
+  /**
+   * 设置用户的 Primary Key
+   */
+  setPrimaryKey: (userId, data) =>
+    api.patch(`/api/admin/users/${userId}/primary-key`, data),
+}
+
+// 合并到 adminUserApi
+Object.assign(adminUserApi, _adminUserApiExtra)
+
+// ─────────────────────────────────────────────────────────────────────
+// 用户 Primary Key 接口
+// ─────────────────────────────────────────────────────────────────────
+
+export const userPrimaryKeyApi = {
+  /**
+   * 获取我的 Primary Keys
+   */
+  list: () => api.get('/api/user/primary-keys'),
+}
+
 export default api

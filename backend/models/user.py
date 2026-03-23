@@ -9,7 +9,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, Text, Enum
+from sqlalchemy import String, Boolean, DateTime, Numeric, Integer, Text, Enum, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator, CHAR
 import enum
@@ -109,6 +109,14 @@ class User(Base):
         Integer,
         default=5,
         nullable=False
+    )
+
+    # 供应商 Key 软分配
+    primary_provider_keys: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=dict
+        # 数据结构: {"openai": "uuid-of-primary-key", "anthropic": "uuid-of-primary-key", ...}
     )
 
     # 状态

@@ -28,7 +28,13 @@ def _mock_provider_key():
     mock_key.override_output_price = None
     mock_key.is_coding_plan = False
 
-    return (mock_provider, mock_key, "decrypted-key")
+    # 创建 KeySelectionResult mock
+    mock_selection = MagicMock()
+    mock_selection.key = mock_key
+    mock_selection.key_source = "standard"
+    mock_selection.rpm_remaining = -1
+
+    return (mock_provider, mock_key, "decrypted-key", mock_selection)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -43,7 +49,7 @@ async def test_valid_key_passes_auth(client, user_api_key):
     # Mock 供应商相关函数
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -125,7 +131,7 @@ async def test_route_to_openai(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {"id": "test", "choices": []}
@@ -150,7 +156,7 @@ async def test_route_to_anthropic(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "anthropic"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {"id": "test", "choices": []}
@@ -174,7 +180,7 @@ async def test_route_to_openrouter(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openrouter"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {"id": "test", "choices": []}
@@ -202,7 +208,7 @@ async def test_openai_request_format(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {"id": "test", "choices": []}
@@ -237,7 +243,7 @@ async def test_anthropic_request_conversion(client, user_api_key):
 
         with patch('routers.gateway.forward_request') as mock_forward:
             with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-                with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+                with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                     mock_provider.return_value = "anthropic"
                     mock_get_key.return_value = _mock_provider_key()
                     mock_forward.return_value = {"id": "test", "choices": []}
@@ -262,7 +268,7 @@ async def test_response_unified_format(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -315,7 +321,7 @@ async def test_stream_response(client, user_api_key):
 
     with patch('routers.gateway.forward_request_stream') as mock_stream_func:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_stream_func.return_value = mock_stream()
@@ -346,7 +352,7 @@ async def test_provider_error_handling(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.side_effect = Exception("Provider API error")
@@ -393,7 +399,7 @@ async def test_model_whitelist_allowed(client, test_user, db_session):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {"id": "test", "choices": []}
@@ -499,7 +505,7 @@ async def test_auth_x_api_key(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
@@ -528,7 +534,7 @@ async def test_auth_bearer_still_works(client, user_api_key):
 
     with patch('routers.gateway.forward_request') as mock_forward:
         with patch('routers.gateway.get_provider_name_by_model') as mock_provider:
-            with patch('routers.gateway.get_provider_and_key') as mock_get_key:
+            with patch('routers.gateway.get_provider_and_key_with_source') as mock_get_key:
                 mock_provider.return_value = "openai"
                 mock_get_key.return_value = _mock_provider_key()
                 mock_forward.return_value = {
