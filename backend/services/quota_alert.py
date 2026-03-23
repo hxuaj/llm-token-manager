@@ -153,14 +153,15 @@ class QuotaAlertService:
             }
 
         # 计算本月该模型用量
-        year_month = datetime.utcnow().strftime("%Y-%m")
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         cost_result = await db.execute(
             select(func.sum(RequestLog.cost_usd)).where(
                 and_(
                     RequestLog.user_id == user.id,
                     RequestLog.model == model_id,
                     RequestLog.status == RequestStatus.SUCCESS,
-                    func.strftime('%Y-%m', RequestLog.created_at) == year_month
+                    RequestLog.created_at >= month_start
                 )
             )
         )

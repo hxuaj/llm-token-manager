@@ -137,14 +137,13 @@ def get_truncate_expr(granularity: str):
     Returns:
         SQLAlchemy 表达式
     """
+    # PostgreSQL 使用 to_char 函数
     if granularity == "hour":
-        # SQLite 不支持 date_trunc，使用 strftime
-        return func.strftime('%Y-%m-%d %H:00', RequestLog.created_at)
+        return func.to_char(RequestLog.created_at, 'YYYY-MM-DD HH24:00')
     elif granularity == "week":
-        # 使用日期作为周的开始
-        return func.strftime('%Y-%m-%d', RequestLog.created_at)
+        return func.to_char(RequestLog.created_at, 'YYYY-MM-DD')
     else:  # day
-        return func.strftime('%Y-%m-%d', RequestLog.created_at)
+        return func.to_char(RequestLog.created_at, 'YYYY-MM-DD')
 
 
 # ─────────────────────────────────────────────────────────────────────
