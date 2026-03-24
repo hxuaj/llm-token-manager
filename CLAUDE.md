@@ -313,6 +313,23 @@ cd backend && python -m pytest --lf
 - 供应商 Key 存 AES-256 加密（可解密用于调用）
 - 每次 schema 变更必须通过 Alembic migration
 
+### 数据库兼容性规范
+
+开发环境使用 SQLite，生产环境使用 PostgreSQL。为确保兼容性：
+
+**ORM 使用原则**
+- 必须使用 SQLAlchemy ORM，禁止原生 SQL
+- 禁止使用方言特定语法（如 `RETURNING`、`ON CONFLICT DO UPDATE`）
+- 布尔值使用 Python `bool`，让 ORM 自动转换
+- JSON 字段使用 SQLAlchemy 的 `JSON` 类型
+
+**PostgreSQL 兼容性测试**
+
+发布前运行兼容性测试验证：
+```bash
+./scripts/test-pg-compat.sh
+```
+
 ---
 
 ## 开发顺序
