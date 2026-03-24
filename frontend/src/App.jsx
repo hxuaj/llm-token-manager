@@ -232,7 +232,7 @@ function MainLayout({ children }) {
           textAlign: 'center',
         }}>
           <Text type="secondary">
-            LLM Token Manager ©2026 - 统一管理团队的 LLM API 使用
+            LLM Token Manager ©2026
           </Text>
         </Footer>
       </Layout>
