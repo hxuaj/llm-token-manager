@@ -67,6 +67,11 @@ export const authApi = {
    * 获取当前用户信息
    */
   me: () => api.get('/api/auth/me'),
+
+  /**
+   * 修改密码
+   */
+  changePassword: (data) => api.post('/api/auth/change-password', data),
 }
 
 // ─────────────────────────────────────────────────────────────────────

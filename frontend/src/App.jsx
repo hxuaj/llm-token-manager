@@ -8,7 +8,8 @@ import { Layout, Menu, Dropdown, Avatar, Typography, message, Tabs, Steps, Alert
 import {
   ApiOutlined, UserOutlined, KeyOutlined, BarChartOutlined,
   DashboardOutlined, TeamOutlined, CloudServerOutlined,
-  LogoutOutlined, LoginOutlined, CodeOutlined, CopyOutlined, CheckOutlined
+  LogoutOutlined, LoginOutlined, CodeOutlined, CopyOutlined, CheckOutlined,
+  SettingOutlined
 } from '@ant-design/icons'
 
 import { AuthProvider, useAuth } from './components/AuthContext'
@@ -17,6 +18,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import MyKeys from './pages/MyKeys'
 import MyUsage from './pages/MyUsage'
+import Profile from './pages/Profile'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminUsers from './pages/AdminUsers'
 import AdminProviders from './pages/AdminProviders'
@@ -99,6 +101,11 @@ function MainLayout({ children }) {
       },
       { type: 'divider' },
       {
+        key: 'settings',
+        icon: <SettingOutlined />,
+        label: <Link to="/profile">个人设置</Link>,
+      },
+      {
         key: 'logout',
         icon: <LogoutOutlined />,
         label: '退出登录',
@@ -112,6 +119,7 @@ function MainLayout({ children }) {
     const path = location.pathname
     if (path === '/keys') return 'keys'
     if (path === '/usage') return 'usage'
+    if (path === '/profile') return 'profile'
     if (path === '/admin') return 'admin'
     if (path === '/admin/users') return 'admin-users'
     if (path === '/admin/providers') return 'admin-providers'
@@ -515,6 +523,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <MainLayout>
               <MyUsage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Profile />
             </MainLayout>
           </ProtectedRoute>
         }

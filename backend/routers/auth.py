@@ -64,6 +64,17 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
+class ChangePasswordResponse(BaseModel):
+    """修改密码响应"""
+    message: str
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 辅助函数
 # ─────────────────────────────────────────────────────────────────────
@@ -204,3 +215,35 @@ async def get_me(
     需要 JWT 认证
     """
     return user_to_response(current_user)
+
+
+@router.post("/change-password", response_model=ChangePasswordResponse)
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    修改密码
+
+    需要 JWT 认证
+    """
+    # 验证旧密码
+    if not verify_password(data.old_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="旧密码错误"
+        )
+
+    # 检查新密码是否与旧密码相同
+    if verify_password(data.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="新密码不能与旧密码相同"
+        )
+
+    # 更新密码
+    current_user.password_hash = hash_password(data.new_password)
+    await db.commit()
+
+    return ChangePasswordResponse(message="密码修改成功")

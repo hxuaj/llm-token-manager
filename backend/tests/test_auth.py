@@ -283,3 +283,101 @@ async def test_get_current_user(client, user_token, test_user):
     assert data["email"] == test_user.email
     assert data["real_name"] == test_user.real_name
     assert data["role"] == "user"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 修改密码测试
+# ─────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_change_password_success(client, user_token, test_user, db_session):
+    """正常修改密码 - 应返回 200，之后可以用新密码登录"""
+    # 修改密码
+    response = await client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json={
+            "old_password": "testpassword123",
+            "new_password": "newSecurePassword456"
+        }
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "密码修改成功"
+
+    # 验证新密码可以登录
+    login_response = await client.post(
+        "/api/auth/login",
+        json={
+            "username": test_user.username,
+            "password": "newSecurePassword456"
+        }
+    )
+    assert login_response.status_code == 200
+    assert "access_token" in login_response.json()
+
+    # 验证旧密码不能登录
+    old_login_response = await client.post(
+        "/api/auth/login",
+        json={
+            "username": test_user.username,
+            "password": "testpassword123"
+        }
+    )
+    assert old_login_response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_change_password_wrong_old(client, user_token):
+    """旧密码错误 - 应返回 401"""
+    response = await client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json={
+            "old_password": "wrongOldPassword",
+            "new_password": "newSecurePassword456"
+        }
+    )
+    assert response.status_code == 401
+    assert "旧密码错误" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_change_password_weak_new(client, user_token):
+    """新密码太弱 - 应返回 422"""
+    response = await client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json={
+            "old_password": "testpassword123",
+            "new_password": "short"  # 只有 5 位，少于 6 位
+        }
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_change_password_unauthenticated(client):
+    """未认证用户 - 应返回 401"""
+    response = await client.post(
+        "/api/auth/change-password",
+        json={
+            "old_password": "testpassword123",
+            "new_password": "newSecurePassword456"
+        }
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_change_password_same_as_old(client, user_token):
+    """新密码与旧密码相同 - 应返回 400"""
+    response = await client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {user_token}"},
+        json={
+            "old_password": "testpassword123",
+            "new_password": "testpassword123"
+        }
+    )
+    assert response.status_code == 400
+    assert "新密码不能与旧密码相同" in response.json()["detail"]
