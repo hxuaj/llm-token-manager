@@ -13,10 +13,12 @@ PostgreSQL 兼容性测试
         python -m pytest tests/test_postgres_compat.py -v
 """
 import os
+import uuid
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
 
 # 检查是否配置了 PostgreSQL 测试 URL
 POSTGRES_URL = os.getenv("POSTGRES_TEST_URL")
@@ -34,9 +36,7 @@ os.environ["ENCRYPTION_KEY"] = "pg-test-encryption-key-32-chars!"
 from database import Base, get_db
 from models.user import User, UserRole
 from models.user_api_key import UserApiKey
-from models.provider import Provider
-from models.provider_api_key import ProviderApiKey
-from models.request_log import RequestLog
+from models.request_log import RequestLog, RequestStatus
 from services.auth import hash_password, create_access_token
 from services.user_key_service import generate_api_key
 from main import app
@@ -46,9 +46,9 @@ from main import app
 # PostgreSQL 数据库 Fixtures
 # ─────────────────────────────────────────────────────────────────────
 
-@pytest_asyncio.fixture(scope="module")
-async def pg_engine():
-    """创建 PostgreSQL 测试引擎（模块级别，只创建一次）"""
+@pytest_asyncio.fixture
+async def db_session():
+    """创建 PostgreSQL 测试 session"""
     engine = create_async_engine(
         POSTGRES_URL,
         echo=False,
@@ -61,19 +61,9 @@ async def pg_engine():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-    yield engine
-
-    # 清理
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def db_session(pg_engine):
-    """创建独立的测试 session，每个测试后回滚"""
+    # 创建 session
     async_session_maker = async_sessionmaker(
-        pg_engine,
+        engine,
         class_=AsyncSession,
         expire_on_commit=False,
         autocommit=False,
@@ -81,10 +71,12 @@ async def db_session(pg_engine):
     )
 
     async with async_session_maker() as session:
-        # 开始事务
-        async with session.begin():
-            yield session
-        # 事务自动回滚
+        yield session
+
+    # 清理
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -104,15 +96,22 @@ async def client(db_session: AsyncSession):
     app.dependency_overrides.clear()
 
 
+# ─────────────────────────────────────────────────────────────────────
+# 用户 fixtures
+# ─────────────────────────────────────────────────────────────────────
+
 @pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession):
     """创建测试用户"""
     user = User(
+        username="pg-test-user",
         email="pg-test@example.com",
         password_hash=hash_password("password123"),
         role=UserRole.USER,
-        monthly_quota_usd=100.0,
         is_active=True,
+        monthly_quota_usd=100.0,
+        rpm_limit=30,
+        max_keys=5,
     )
     db_session.add(user)
     await db_session.commit()
@@ -124,11 +123,14 @@ async def test_user(db_session: AsyncSession):
 async def test_admin(db_session: AsyncSession):
     """创建测试管理员"""
     admin = User(
+        username="pg-test-admin",
         email="pg-admin@example.com",
         password_hash=hash_password("admin123"),
         role=UserRole.ADMIN,
-        monthly_quota_usd=1000.0,
         is_active=True,
+        monthly_quota_usd=1000.0,
+        rpm_limit=100,
+        max_keys=10,
     )
     db_session.add(admin)
     await db_session.commit()
@@ -137,35 +139,50 @@ async def test_admin(db_session: AsyncSession):
 
 
 @pytest_asyncio.fixture
-async def user_token(test_user):
+async def user_token(test_user: User):
     """生成用户 JWT token"""
-    return create_access_token({"sub": str(test_user.id), "role": "user"})
-
-
-@pytest_asyncio.fixture
-async def admin_token(test_admin):
-    """生成管理员 JWT token"""
-    return create_access_token({"sub": str(test_admin.id), "role": "admin"})
-
-
-@pytest_asyncio.fixture
-async def user_api_key(db_session: AsyncSession, test_user):
-    """创建用户 API Key"""
-    raw_key = generate_api_key()
-    key_obj = UserApiKey(
-        user_id=test_user.id,
-        key_hash=hashlib.sha256(raw_key.encode()).hexdigest(),
-        key_prefix=raw_key[:8],
-        name="PG Test Key",
-        is_active=True,
+    role = test_user.role.value if hasattr(test_user.role, 'value') else test_user.role
+    token = create_access_token(
+        data={
+            "sub": test_user.username,
+            "user_id": str(test_user.id),
+            "role": role
+        }
     )
-    db_session.add(key_obj)
+    return token
+
+
+@pytest_asyncio.fixture
+async def admin_token(test_admin: User):
+    """生成管理员 JWT token"""
+    role = test_admin.role.value if hasattr(test_admin.role, 'value') else test_admin.role
+    token = create_access_token(
+        data={
+            "sub": test_admin.username,
+            "user_id": str(test_admin.id),
+            "role": role
+        }
+    )
+    return token
+
+
+@pytest_asyncio.fixture
+async def user_api_key(test_user, db_session: AsyncSession):
+    """创建用户 API Key"""
+    raw_key, key_hash, key_suffix = generate_api_key()
+    key = UserApiKey(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        name="PG Test Key",
+        key_hash=key_hash,
+        key_prefix="ltm-sk-",
+        key_suffix=key_suffix,
+        status="active",
+    )
+    db_session.add(key)
     await db_session.commit()
-    await db_session.refresh(key_obj)
-    return (key_obj, raw_key)
-
-
-import hashlib
+    await db_session.refresh(key)
+    return key, raw_key
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -176,21 +193,23 @@ class TestPostgresBasicCompatibility:
     """基础 PostgreSQL 兼容性测试"""
 
     @pytest.mark.asyncio
-    async def test_database_connection(self, pg_engine):
+    async def test_database_connection(self, db_session):
         """验证 PostgreSQL 连接正常"""
-        async with pg_engine.connect() as conn:
-            result = await conn.execute("SELECT 1")
-            assert result.scalar() == 1
+        result = await db_session.execute(text("SELECT 1"))
+        assert result.scalar() == 1
 
     @pytest.mark.asyncio
     async def test_user_creation(self, db_session: AsyncSession):
         """验证用户创建在 PostgreSQL 上正常"""
         user = User(
+            username="pg-create-user",
             email="pg-create@example.com",
             password_hash=hash_password("test123"),
             role=UserRole.USER,
-            monthly_quota_usd=50.0,
             is_active=True,
+            monthly_quota_usd=50.0,
+            rpm_limit=30,
+            max_keys=5,
         )
         db_session.add(user)
         await db_session.commit()
@@ -203,20 +222,22 @@ class TestPostgresBasicCompatibility:
     @pytest.mark.asyncio
     async def test_user_api_key_creation(self, db_session: AsyncSession, test_user):
         """验证 API Key 创建在 PostgreSQL 上正常"""
-        raw_key = generate_api_key()
-        key_obj = UserApiKey(
+        raw_key, key_hash, key_suffix = generate_api_key()
+        key = UserApiKey(
+            id=uuid.uuid4(),
             user_id=test_user.id,
-            key_hash=hashlib.sha256(raw_key.encode()).hexdigest(),
-            key_prefix=raw_key[:8],
             name="Test Key",
-            is_active=True,
+            key_hash=key_hash,
+            key_prefix="ltm-sk-",
+            key_suffix=key_suffix,
+            status="active",
         )
-        db_session.add(key_obj)
+        db_session.add(key)
         await db_session.commit()
-        await db_session.refresh(key_obj)
+        await db_session.refresh(key)
 
-        assert key_obj.id is not None
-        assert key_obj.key_prefix == raw_key[:8]
+        assert key.id is not None
+        assert key.key_suffix == key_suffix
 
 
 class TestPostgresAuthCompatibility:
@@ -227,7 +248,7 @@ class TestPostgresAuthCompatibility:
         """验证登录在 PostgreSQL 上正常"""
         response = await client.post(
             "/api/auth/login",
-            json={"email": "pg-test@example.com", "password": "password123"}
+            json={"username": "pg-test-user", "password": "password123"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -238,7 +259,7 @@ class TestPostgresAuthCompatibility:
         """验证错误密码被拒绝"""
         response = await client.post(
             "/api/auth/login",
-            json={"email": "pg-test@example.com", "password": "wrongpassword"}
+            json={"username": "pg-test-user", "password": "wrongpassword"}
         )
         assert response.status_code == 401
 
@@ -254,7 +275,7 @@ class TestPostgresUserKeyCompatibility:
             json={"name": "New PG Key"},
             headers={"Authorization": f"Bearer {user_token}"}
         )
-        assert response.status_code == 200
+        assert response.status_code == 201  # Created
         data = response.json()
         assert "key" in data
         assert data["key"].startswith("ltm-sk-")
@@ -283,8 +304,9 @@ class TestPostgresAdminCompatibility:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "users" in data
-        assert len(data["users"]) >= 1
+        # API 返回的是列表，不是 {users: [...]}
+        assert isinstance(data, list)
+        assert len(data) >= 1
 
     @pytest.mark.asyncio
     async def test_user_cannot_access_admin(self, client, user_token):
@@ -296,26 +318,30 @@ class TestPostgresAdminCompatibility:
         assert response.status_code == 403
 
 
-class TestPostgresJSONCompatibility:
-    """JSON 字段 PostgreSQL 兼容性测试（重点）"""
+class TestPostgresRequestLogCompatibility:
+    """请求日志 PostgreSQL 兼容性测试"""
 
     @pytest.mark.asyncio
-    async def test_request_log_json_fields(self, db_session: AsyncSession, test_user):
-        """验证 JSON 字段在 PostgreSQL 上正常存储和读取"""
+    async def test_request_log_creation(self, db_session: AsyncSession, test_user):
+        """验证请求日志在 PostgreSQL 上正常创建"""
         log = RequestLog(
+            id=uuid.uuid4(),
+            request_id=f"req-{uuid.uuid4().hex[:16]}",
             user_id=test_user.id,
             model="gpt-4o",
-            provider="openai",
             input_tokens=100,
             output_tokens=50,
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
             cost_usd=0.01,
-            request_metadata={"key": "value", "nested": {"data": 123}},
-            response_metadata={"status": "success"},
+            status=RequestStatus.SUCCESS,
         )
         db_session.add(log)
         await db_session.commit()
         await db_session.refresh(log)
 
-        assert log.request_metadata["key"] == "value"
-        assert log.request_metadata["nested"]["data"] == 123
-        assert log.response_metadata["status"] == "success"
+        assert log.id is not None
+        assert log.model == "gpt-4o"
+        assert log.input_tokens == 100
+        assert log.output_tokens == 50
