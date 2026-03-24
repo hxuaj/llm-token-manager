@@ -39,7 +39,7 @@ export default function Profile() {
     <div style={{ padding: '24px', maxWidth: 800, margin: '0 auto' }}>
       <Card>
         <Title level={4} style={{ marginTop: 0 }}>个人信息</Title>
-        <Descriptions column={1} labelStyle={{ width: 100 }}>
+        <Descriptions column={1} styles={{ label: { width: 100 } }}>
           <Descriptions.Item label="用户名">
             <Text><UserOutlined style={{ marginRight: 8 }} />{user?.username}</Text>
           </Descriptions.Item>
