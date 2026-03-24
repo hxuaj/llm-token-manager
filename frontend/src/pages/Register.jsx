@@ -3,7 +3,7 @@
  */
 import React, { useState } from 'react'
 import { Form, Input, Button, Card, message, Typography } from 'antd'
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons'
+import { UserOutlined, LockOutlined, MailOutlined, IdcardOutlined } from '@ant-design/icons'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../components/AuthContext'
 
@@ -17,7 +17,7 @@ export default function Register() {
   const onFinish = async (values) => {
     setLoading(true)
     try {
-      await register(values.username, values.email, values.password)
+      await register(values.username, values.email, values.password, values.real_name)
       message.success('注册成功')
       navigate('/')
     } catch (error) {
@@ -63,6 +63,16 @@ export default function Register() {
             ]}
           >
             <Input prefix={<UserOutlined />} placeholder="用户名" />
+          </Form.Item>
+
+          <Form.Item
+            name="real_name"
+            rules={[
+              { required: true, message: '请输入真实姓名' },
+              { max: 100, message: '真实姓名最多 100 个字符' },
+            ]}
+          >
+            <Input prefix={<IdcardOutlined />} placeholder="真实姓名" />
           </Form.Item>
 
           <Form.Item

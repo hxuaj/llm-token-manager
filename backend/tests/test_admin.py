@@ -91,6 +91,7 @@ async def test_delete_user(client, admin_token, db_session):
         username="to_delete",
         email="delete@example.com",
         password_hash=hash_password("password123"),
+        real_name="待删除用户",
         role=UserRole.USER,
         is_active=True,
     )

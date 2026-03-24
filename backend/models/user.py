@@ -80,6 +80,10 @@ class User(Base):
         index=True,
         nullable=False
     )
+    real_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False
+    )
     password_hash: Mapped[str] = mapped_column(
         String(255),
         nullable=False

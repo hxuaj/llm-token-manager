@@ -25,6 +25,7 @@ class UserInfoResponse(BaseModel):
     id: str
     username: str
     email: str
+    real_name: str
     role: str
     is_active: bool
     monthly_quota_usd: float
@@ -65,6 +66,7 @@ async def get_current_user_info(
         id=str(current_user.id),
         username=current_user.username,
         email=current_user.email,
+        real_name=current_user.real_name,
         role=role,
         is_active=current_user.is_active,
         monthly_quota_usd=float(current_user.monthly_quota_usd),

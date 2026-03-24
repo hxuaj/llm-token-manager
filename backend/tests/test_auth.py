@@ -24,13 +24,15 @@ async def test_register_success(client):
         json={
             "username": "testuser",
             "email": "testuser@example.com",
-            "password": "securepassword123"
+            "password": "securepassword123",
+            "real_name": "测试用户"
         }
     )
     assert response.status_code == 201
     data = response.json()
     assert data["username"] == "testuser"
     assert data["email"] == "testuser@example.com"
+    assert data["real_name"] == "测试用户"
     assert "id" in data
     assert "password" not in data  # 不应返回密码
     assert "password_hash" not in data
@@ -44,7 +46,8 @@ async def test_register_duplicate_username(client, test_user):
         json={
             "username": "testuser",  # 与 test_user 相同
             "email": "another@example.com",
-            "password": "securepassword123"
+            "password": "securepassword123",
+            "real_name": "另一个用户"
         }
     )
     assert response.status_code == 409
@@ -59,7 +62,8 @@ async def test_register_duplicate_email(client, test_user):
         json={
             "username": "anotheruser",
             "email": "testuser@example.com",  # 与 test_user 相同
-            "password": "securepassword123"
+            "password": "securepassword123",
+            "real_name": "另一个用户"
         }
     )
     assert response.status_code == 409
@@ -74,7 +78,8 @@ async def test_register_weak_password(client):
         json={
             "username": "testuser",
             "email": "testuser@example.com",
-            "password": "short"  # 只有 5 位
+            "password": "short",  # 只有 5 位
+            "real_name": "测试用户"
         }
     )
     assert response.status_code == 422
@@ -88,7 +93,8 @@ async def test_register_invalid_email(client):
         json={
             "username": "testuser",
             "email": "invalid-email",  # 无效格式
-            "password": "securepassword123"
+            "password": "securepassword123",
+            "real_name": "测试用户"
         }
     )
     assert response.status_code == 422
@@ -101,7 +107,22 @@ async def test_register_missing_fields(client):
         "/api/auth/register",
         json={
             "username": "testuser"
-            # 缺少 email 和 password
+            # 缺少 email、password 和 real_name
+        }
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_register_missing_real_name(client):
+    """缺少真实姓名 - 应返回 422"""
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "testuser",
+            "email": "testuser@example.com",
+            "password": "securepassword123"
+            # 缺少 real_name
         }
     )
     assert response.status_code == 422
@@ -162,7 +183,8 @@ async def test_login_disabled_user(client):
         json={
             "username": "disableduser",
             "email": "disabled@example.com",
-            "password": "testpassword123"
+            "password": "testpassword123",
+            "real_name": "禁用用户"
         }
     )
 
@@ -259,4 +281,5 @@ async def test_get_current_user(client, user_token, test_user):
     data = response.json()
     assert data["username"] == test_user.username
     assert data["email"] == test_user.email
+    assert data["real_name"] == test_user.real_name
     assert data["role"] == "user"

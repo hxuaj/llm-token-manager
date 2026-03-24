@@ -55,9 +55,9 @@ export function AuthProvider({ children }) {
   }
 
   // 注册
-  const register = async (username, email, password) => {
+  const register = async (username, email, password, real_name) => {
     // 先注册
-    await authApi.register({ username, email, password })
+    await authApi.register({ username, email, password, real_name })
 
     // 然后自动登录
     return await login(username, password)

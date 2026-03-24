@@ -71,6 +71,7 @@ async def _create_test_data(db_session):
             username=f"user{i}",
             email=f"user{i}@example.com",
             password_hash=hash_password("password123"),
+            real_name=f"用户{i}",
             role="user",
             is_active=True
         )

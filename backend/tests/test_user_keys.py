@@ -107,6 +107,7 @@ async def test_list_keys_only_own(client, user_token, test_user, db_session):
         username="otheruser",
         email="other@example.com",
         password_hash=hash_password("password123"),
+        real_name="其他用户",
         role=UserRole.USER,
         is_active=True,
     )
@@ -206,6 +207,7 @@ async def test_revoke_other_user_key_forbidden(client, user_token, db_session):
         username="victim",
         email="victim@example.com",
         password_hash=hash_password("password123"),
+        real_name="受害者用户",
         role=UserRole.USER,
         is_active=True,
     )

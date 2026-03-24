@@ -73,6 +73,7 @@ async def test_users(db_session: AsyncSession):
             username=f"testuser_{i}",
             email=f"testuser_{i}@example.com",
             password_hash=hash_password("testpassword123"),
+            real_name=f"测试用户{i}",
             role=UserRole.USER,
             is_active=True
         )
@@ -101,6 +102,7 @@ class TestKeyAssignmentService:
             username="new_user",
             email="new_user@example.com",
             password_hash=hash_password("testpassword123"),
+            real_name="新用户",
             role=UserRole.USER,
             is_active=True
         )
@@ -143,6 +145,7 @@ class TestKeyAssignmentService:
             username="new_user_least",
             email="new_user_least@example.com",
             password_hash=hash_password("testpassword123"),
+            real_name="新用户Least",
             role=UserRole.USER,
             is_active=True
         )
@@ -426,6 +429,7 @@ class TestKeyAssignmentService:
             username="unassigned_user",
             email="unassigned@example.com",
             password_hash=hash_password("testpassword123"),
+            real_name="未分配用户",
             role=UserRole.USER,
             is_active=True,
             primary_provider_keys=None  # 明确为 None

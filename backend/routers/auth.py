@@ -34,6 +34,7 @@ class UserRegister(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=6, max_length=100)
+    real_name: str = Field(..., min_length=1, max_length=100)
 
 
 class UserLogin(BaseModel):
@@ -47,6 +48,7 @@ class UserResponse(BaseModel):
     id: str
     username: str
     email: str
+    real_name: str
     role: str
     is_active: bool
     monthly_quota_usd: float
@@ -73,6 +75,7 @@ def user_to_response(user: User) -> UserResponse:
         id=str(user.id),
         username=user.username,
         email=user.email,
+        real_name=user.real_name,
         role=role,
         is_active=user.is_active,
         monthly_quota_usd=float(user.monthly_quota_usd),
@@ -119,6 +122,7 @@ async def register(
         username=user_data.username,
         email=user_data.email,
         password_hash=hash_password(user_data.password),
+        real_name=user_data.real_name,
         role=UserRole.USER,
         monthly_quota_usd=settings.default_monthly_quota_usd,
         rpm_limit=settings.default_rpm_limit,

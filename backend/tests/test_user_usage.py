@@ -207,6 +207,7 @@ async def test_usage_by_model_only_own_data(client, db_session, test_user, user_
         username="otheruser",
         email="other@example.com",
         password_hash=hash_password("password123"),
+        real_name="其他用户",
         role="user",
         is_active=True
     )
@@ -380,6 +381,7 @@ async def test_usage_by_key_only_own_keys(client, db_session, test_user, user_to
         username="otheruser2",
         email="other2@example.com",
         password_hash=hash_password("password123"),
+        real_name="其他用户2",
         role="user",
         is_active=True
     )
