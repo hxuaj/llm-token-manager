@@ -219,12 +219,12 @@ async def validate_provider_key(
             - validate_api: 是否验证 API Key（默认 False）
             - discover_from_api: 是否从 API 发现模型（默认 False）
     """
-    from services.provider_presets import get_preset, get_models_dev_id
+    from services.provider_presets import get_preset_by_name_or_id, get_models_dev_id
     from services.api_validator import validate_api_key
     from services.api_discovery import discover_models_from_api
 
-    # 1. 获取预设
-    preset = get_preset(data.provider_preset)
+    # 1. 获取预设（支持预设 ID 或供应商名称）
+    preset = get_preset_by_name_or_id(data.provider_preset)
     if not preset:
         return ValidateKeyResponse(
             valid=False,

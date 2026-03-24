@@ -62,6 +62,10 @@ export default function AdminProviders() {
   const [assignedUsersList, setAssignedUsersList] = useState([])
   const [assignedUsersLoading, setAssignedUsersLoading] = useState(false)
 
+  // Key 管理弹窗 - 添加 Key 验证状态
+  const [addKeyValidating, setAddKeyValidating] = useState(false)
+  const [addKeyValidated, setAddKeyValidated] = useState(false)
+
   useEffect(() => {
     loadProviders()
   }, [])
@@ -280,11 +284,46 @@ export default function AdminProviders() {
     }
   }
 
+  // 验证新 Key
+  const handleValidateAddKey = async () => {
+    try {
+      const values = await keyForm.validateFields(['api_key'])
+      setAddKeyValidating(true)
+
+      const response = await adminProviderApi.validateKey({
+        provider_preset: selectedProvider.name,
+        api_key: values.api_key,
+        custom_base_url: null
+      })
+
+      if (response.data.valid) {
+        setAddKeyValidated(true)
+        message.success('验证成功')
+      } else {
+        message.error(response.data.error?.message || '验证失败')
+      }
+    } catch (error) {
+      if (error.response?.data?.detail) {
+        message.error(error.response.data.detail)
+      } else if (!error.errorFields) {
+        message.error('验证失败')
+      }
+    } finally {
+      setAddKeyValidating(false)
+    }
+  }
+
+  // 添加新 Key
   const handleAddKey = async (values) => {
+    if (!addKeyValidated) {
+      message.warning('请先验证 Key')
+      return
+    }
     try {
       await adminProviderApi.addKey(selectedProvider.id, values)
       message.success('添加成功')
       keyForm.resetFields()
+      setAddKeyValidated(false)
       const response = await adminProviderApi.keys(selectedProvider.id)
       setProviderKeys(response.data || [])
     } catch (error) {
@@ -841,6 +880,7 @@ export default function AdminProviders() {
           setKeyModalVisible(false)
           keyForm.resetFields()
           setKeyAssignments([])
+          setAddKeyValidated(false)
         }}
         footer={null}
         width={800}
@@ -885,9 +925,22 @@ export default function AdminProviders() {
               <InputNumber placeholder="RPM 限制" min={0} />
             </Form.Item>
             <Form.Item>
-              <Button type="primary" htmlType="submit">
-                添加
-              </Button>
+              <Space>
+                <Button
+                  icon={<CheckCircleOutlined />}
+                  loading={addKeyValidating}
+                  onClick={handleValidateAddKey}
+                >
+                  验证
+                </Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  disabled={!addKeyValidated}
+                >
+                  添加
+                </Button>
+              </Space>
             </Form.Item>
           </Form>
         </div>

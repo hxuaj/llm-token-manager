@@ -107,6 +107,25 @@ def get_preset(preset_id: str) -> Optional[ProviderPreset]:
     return PROVIDER_PRESETS.get(preset_id)
 
 
+def get_preset_by_name_or_id(name_or_id: str) -> Optional[ProviderPreset]:
+    """
+    通过预设 ID 或供应商名称获取预设
+
+    优先按 ID 查找，找不到则按 name 查找
+    """
+    # 1. 先按 ID 查找
+    preset = PROVIDER_PRESETS.get(name_or_id)
+    if preset:
+        return preset
+
+    # 2. 按 name 查找
+    for p in PROVIDER_PRESETS.values():
+        if p.name == name_or_id:
+            return p
+
+    return None
+
+
 def get_all_presets() -> List[ProviderPreset]:
     """获取所有供应商预设"""
     return list(PROVIDER_PRESETS.values())

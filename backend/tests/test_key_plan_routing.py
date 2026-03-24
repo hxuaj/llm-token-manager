@@ -176,6 +176,41 @@ class TestKeyPlanTypes:
         data = response.json()
         assert data["key_plan"] == "standard"
 
+    async def test_add_key_auto_coding_plan_for_preset(self, client, test_admin, admin_token, db_session):
+        """测试添加 Key 到 Coding Plan 供应商时自动设置 key_plan 和 plan_models"""
+        # 创建一个名为 "minimax" 的供应商（匹配预设）
+        provider = Provider(
+            name="minimax",
+            display_name="MiniMax Coding Plan",
+            base_url="https://api.minimaxi.com/anthropic/v1",
+            api_format=ApiFormat.OPENAI,
+            enabled=True
+        )
+        db_session.add(provider)
+        await db_session.commit()
+        await db_session.refresh(provider)
+
+        # 添加 Key，不指定 key_plan 和 plan_models
+        response = await client.post(
+            f"/api/admin/providers/{provider.id}/keys",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={
+                "api_key": "sk-minimax-test-key",
+                "rpm_limit": 60
+                # 不指定 key_plan 和 plan_models
+            }
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        # 应该自动设置为 coding_plan
+        assert data["key_plan"] == "coding_plan"
+        # 应该自动填充预设的 plan_models
+        assert data["plan_models"] is not None
+        assert len(data["plan_models"]) > 0
+        # 验证包含 MiniMax 模型
+        assert any("MiniMax" in model for model in data["plan_models"])
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Key 选择路由测试

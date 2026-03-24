@@ -572,6 +572,8 @@ async def add_provider_key(
     db: AsyncSession = Depends(get_db)
 ):
     """添加供应商 API Key"""
+    from services.provider_presets import get_preset_by_name_or_id
+
     try:
         provider_uuid = uuid.UUID(provider_id)
     except ValueError:
@@ -582,8 +584,24 @@ async def add_provider_key(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
+    # 获取供应商预设，确定默认的 key_plan
+    preset = get_preset_by_name_or_id(provider.name)
+
+    # 确定 key_plan：如果供应商是 coding_plan 类型，默认使用 coding_plan
+    key_plan = data.key_plan
+    plan_models = data.plan_models
+
+    if preset and preset.is_coding_plan:
+        # Coding Plan 供应商默认使用 coding_plan（除非明确指定 standard）
+        # 注意：Pydantic 默认值是 "standard"，所以只有明确传 coding_plan 才不是 standard
+        # 我们判断：如果传的是默认的 standard，自动改为 coding_plan
+        key_plan = "coding_plan"
+        # 如果没有提供 plan_models，使用预设的模型列表
+        if not plan_models and preset.coding_plan_models:
+            plan_models = preset.coding_plan_models
+
     # 校验 coding_plan 必须提供 plan_models
-    if data.key_plan == "coding_plan" and (not data.plan_models or len(data.plan_models) == 0):
+    if key_plan == "coding_plan" and (not plan_models or len(plan_models) == 0):
         raise HTTPException(
             status_code=400,
             detail="plan_models is required when key_plan is 'coding_plan'"
@@ -600,8 +618,8 @@ async def add_provider_key(
         key_suffix=key_suffix,
         rpm_limit=data.rpm_limit,
         status=ProviderKeyStatus.ACTIVE.value,
-        key_plan=data.key_plan,
-        plan_models=json.dumps(data.plan_models) if data.plan_models else None,
+        key_plan=key_plan,
+        plan_models=json.dumps(plan_models) if plan_models else None,
         plan_description=data.plan_description,
         override_input_price=Decimal(str(data.override_input_price)) if data.override_input_price is not None else None,
         override_output_price=Decimal(str(data.override_output_price)) if data.override_output_price is not None else None,
@@ -614,7 +632,7 @@ async def add_provider_key(
     discovery_result = None
 
     # 仅当添加 standard Key 且是该供应商的首个 standard Key 时，触发模型发现
-    if data.key_plan == "standard":
+    if key_plan == "standard":
         try:
             standard_key_count = await KeySelector.count_standard_keys(provider, db)
             # 由于刚添加了一个，所以 standard_key_count 至少为 1
@@ -659,7 +677,7 @@ async def add_provider_key(
         rpm_limit=api_key.rpm_limit,
         status=api_key.status.value if hasattr(api_key.status, 'value') else api_key.status,
         key_plan=api_key.key_plan,
-        plan_models=data.plan_models,
+        plan_models=plan_models,
         plan_description=api_key.plan_description,
         created_at=api_key.created_at.isoformat(),
         discovery=discovery_result
