@@ -14,10 +14,10 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, case
+from sqlalchemy import select, func, and_, case, literal_column
 from sqlalchemy.orm import selectinload
 
-from database import get_db
+from database import get_db, engine
 from models.user import User
 from models.request_log import RequestLog, RequestStatus
 from models.user_api_key import UserApiKey
@@ -129,7 +129,7 @@ def get_date_range(period: str, start_date: Optional[str], end_date: Optional[st
 
 def get_truncate_expr(granularity: str):
     """
-    获取日期截断表达式
+    获取日期截断表达式（兼容 SQLite 和 PostgreSQL）
 
     Args:
         granularity: 粒度 (hour, day, week)
@@ -137,13 +137,25 @@ def get_truncate_expr(granularity: str):
     Returns:
         SQLAlchemy 表达式
     """
-    # PostgreSQL 使用 to_char 函数
-    if granularity == "hour":
-        return func.to_char(RequestLog.created_at, 'YYYY-MM-DD HH24:00')
-    elif granularity == "week":
-        return func.to_char(RequestLog.created_at, 'YYYY-MM-DD')
-    else:  # day
-        return func.to_char(RequestLog.created_at, 'YYYY-MM-DD')
+    # 检测数据库类型
+    dialect_name = engine.dialect.name
+
+    if dialect_name == "sqlite":
+        # SQLite 使用 strftime
+        if granularity == "hour":
+            return func.strftime('%Y-%m-%d %H:00', RequestLog.created_at)
+        elif granularity == "week":
+            return func.strftime('%Y-%m-%d', RequestLog.created_at)
+        else:  # day
+            return func.strftime('%Y-%m-%d', RequestLog.created_at)
+    else:
+        # PostgreSQL 使用 to_char
+        if granularity == "hour":
+            return func.to_char(RequestLog.created_at, 'YYYY-MM-DD HH24:00')
+        elif granularity == "week":
+            return func.to_char(RequestLog.created_at, 'YYYY-MM-DD')
+        else:  # day
+            return func.to_char(RequestLog.created_at, 'YYYY-MM-DD')
 
 
 # ─────────────────────────────────────────────────────────────────────
