@@ -69,7 +69,7 @@ docker compose -f docker-compose.prod.yml down 2>/dev/null || true
 # 构建镜像
 echo ""
 echo "构建镜像..."
-docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build --pull
 
 # 启动服务
 echo ""
