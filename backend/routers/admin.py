@@ -114,7 +114,7 @@ class ProviderDetail(ProviderResponse):
 class ProviderKeyCreate(BaseModel):
     """创建供应商 Key"""
     api_key: str
-    rpm_limit: int = 60
+    rpm_limit: int = 0
     key_plan: str = Field(default="standard", pattern="^(standard|coding_plan)$")
     plan_models: Optional[List[str]] = None  # coding_plan 时必填
     plan_description: Optional[str] = None

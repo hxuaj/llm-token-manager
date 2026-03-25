@@ -921,8 +921,8 @@ export default function AdminProviders() {
             >
               <Input.Password placeholder="输入供应商 API Key" />
             </Form.Item>
-            <Form.Item name="rpm_limit">
-              <InputNumber placeholder="RPM 限制" min={0} />
+            <Form.Item name="rpm_limit" initialValue={0}>
+              <InputNumber placeholder="0 表示无限制" min={0} />
             </Form.Item>
             <Form.Item>
               <Space>
