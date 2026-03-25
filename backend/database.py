@@ -4,6 +4,7 @@
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 from config import get_settings
 
 settings = get_settings()
@@ -50,9 +51,18 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """初始化数据库（创建所有表）"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """初始化数据库
+
+    测试环境：使用 create_all 自动建表（内存 SQLite）。
+    生产环境：表结构由 Alembic 迁移管理，此处仅验证连接可用。
+    """
+    if settings.testing:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    else:
+        # 验证数据库连接可用
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
 
 
 async def close_db():
