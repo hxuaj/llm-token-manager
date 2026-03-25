@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 创建 model_catalog 表（if_not_exists 防止重复部署时报错）
+    # 创建 model_catalog 表
     op.create_table(
         'model_catalog',
         sa.Column('id', sa.String(32), primary_key=True),
@@ -40,12 +40,11 @@ def upgrade() -> None:
         sa.Column('source', sa.String(20), server_default='manual'),  # auto_discovered, manual, builtin_default
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('updated_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP')),
-        if_not_exists=True,
     )
 
-    # 创建索引（if_not_exists 防止重复部署时报错）
-    op.create_index('idx_model_catalog_provider', 'model_catalog', ['provider_id'], if_not_exists=True)
-    op.create_index('idx_model_catalog_status', 'model_catalog', ['status'], if_not_exists=True)
+    # 创建索引
+    op.create_index('idx_model_catalog_provider', 'model_catalog', ['provider_id'])
+    op.create_index('idx_model_catalog_status', 'model_catalog', ['status'])
 
 
 def downgrade() -> None:
