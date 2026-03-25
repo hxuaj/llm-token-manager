@@ -100,11 +100,6 @@ async def list_users():
 
 
 async def main():
-    # 确保表存在
-    from database import Base
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     if len(sys.argv) == 1:
         # 交互式模式
         print("=== 创建管理员账号 ===\n")
