@@ -66,6 +66,11 @@ echo ""
 echo "停止旧容器..."
 docker compose -f docker-compose.prod.yml down 2>/dev/null || true
 
+# 清除旧的前端构建产物 volume
+echo ""
+echo "清除旧的前端构建产物..."
+docker volume ls -q | grep "_frontend_dist$" | xargs -r docker volume rm
+
 # 构建镜像
 echo ""
 echo "构建镜像..."
@@ -85,13 +90,6 @@ sleep 5
 echo ""
 echo "运行数据库迁移..."
 docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
-
-# 重新构建前端（确保使用最新代码）
-echo ""
-echo "重新构建前端..."
-docker compose -f docker-compose.prod.yml up -d --force-recreate frontend-builder
-sleep 5
-docker compose -f docker-compose.prod.yml restart nginx
 
 # 显示状态
 echo ""
