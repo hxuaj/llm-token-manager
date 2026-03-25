@@ -22,10 +22,10 @@ def upgrade() -> None:
     # 创建 model_catalog 表
     op.create_table(
         'model_catalog',
-        sa.Column('id', sa.String(32), primary_key=True),
+        sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('model_id', sa.String(100), nullable=False, unique=True),
         sa.Column('display_name', sa.String(200), nullable=False),
-        sa.Column('provider_id', sa.String(32), sa.ForeignKey('providers.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('provider_id', sa.String(36), sa.ForeignKey('providers.id', ondelete='CASCADE'), nullable=False),
         sa.Column('input_price', sa.Numeric(10, 4), nullable=False, server_default='0'),
         sa.Column('output_price', sa.Numeric(10, 4), nullable=False, server_default='0'),
         sa.Column('cache_write_price', sa.Numeric(10, 4), server_default='0'),

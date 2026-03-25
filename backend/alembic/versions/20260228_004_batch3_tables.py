@@ -20,11 +20,11 @@ def upgrade() -> None:
     # 1. model_usage_daily - 每日用量预聚合表
     op.create_table(
         'model_usage_daily',
-        sa.Column('id', sa.String(32), primary_key=True),
+        sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('date', sa.Date(), nullable=False),
-        sa.Column('user_id', sa.String(32), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('model_id', sa.String(100), nullable=False),
-        sa.Column('key_id', sa.String(32), sa.ForeignKey('user_api_keys.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('key_id', sa.String(36), sa.ForeignKey('user_api_keys.id', ondelete='SET NULL'), nullable=True),
         sa.Column('request_count', sa.Integer(), server_default='0', nullable=False),
         sa.Column('input_tokens', sa.BigInteger(), server_default='0', nullable=False),
         sa.Column('output_tokens', sa.BigInteger(), server_default='0', nullable=False),
@@ -40,13 +40,13 @@ def upgrade() -> None:
     # 2. model_pricing_history - 模型定价历史表
     op.create_table(
         'model_pricing_history',
-        sa.Column('id', sa.String(32), primary_key=True),
+        sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('model_id', sa.String(100), nullable=False),
         sa.Column('old_input_price', sa.Numeric(10, 4), nullable=True),
         sa.Column('new_input_price', sa.Numeric(10, 4), nullable=False),
         sa.Column('old_output_price', sa.Numeric(10, 4), nullable=True),
         sa.Column('new_output_price', sa.Numeric(10, 4), nullable=False),
-        sa.Column('changed_by', sa.String(32), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=False),
+        sa.Column('changed_by', sa.String(36), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=False),
         sa.Column('changed_at', sa.DateTime(), server_default=sa.text('NOW()'), nullable=False),
         sa.Column('reason', sa.Text(), nullable=True),
     )
@@ -56,8 +56,8 @@ def upgrade() -> None:
     # 3. user_model_limits - 用户模型级额度限制表
     op.create_table(
         'user_model_limits',
-        sa.Column('id', sa.String(32), primary_key=True),
-        sa.Column('user_id', sa.String(32), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('model_id', sa.String(100), nullable=False),
         sa.Column('monthly_limit_usd', sa.Numeric(10, 2), nullable=True),
         sa.Column('daily_request_limit', sa.Integer(), nullable=True),

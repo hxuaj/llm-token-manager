@@ -24,7 +24,7 @@ def upgrade() -> None:
     # ========== users 表 ==========
     op.create_table(
         'users',
-        sa.Column('id', sa.String(32), primary_key=True),
+        sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('username', sa.String(50), unique=True, nullable=False, index=True),
         sa.Column('email', sa.String(100), unique=True, nullable=False, index=True),
         sa.Column('password_hash', sa.String(255), nullable=False),
@@ -40,7 +40,7 @@ def upgrade() -> None:
     # ========== providers 表 ==========
     op.create_table(
         'providers',
-        sa.Column('id', sa.String(32), primary_key=True),
+        sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('name', sa.String(50), unique=True, nullable=False, index=True),
         sa.Column('base_url', sa.String(255), nullable=False),
         sa.Column('api_format', sa.String(20), server_default='openai', nullable=False),
@@ -53,8 +53,8 @@ def upgrade() -> None:
     # ========== provider_api_keys 表 ==========
     op.create_table(
         'provider_api_keys',
-        sa.Column('id', sa.String(32), primary_key=True),
-        sa.Column('provider_id', sa.String(32), sa.ForeignKey('providers.id', ondelete='CASCADE'), nullable=False, index=True),
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('provider_id', sa.String(36), sa.ForeignKey('providers.id', ondelete='CASCADE'), nullable=False, index=True),
         sa.Column('encrypted_key', sa.Text(), nullable=False),
         sa.Column('key_suffix', sa.String(4), nullable=False),
         sa.Column('rpm_limit', sa.Integer(), server_default='60', nullable=False),
@@ -65,8 +65,8 @@ def upgrade() -> None:
     # ========== user_api_keys 表 ==========
     op.create_table(
         'user_api_keys',
-        sa.Column('id', sa.String(32), primary_key=True),
-        sa.Column('user_id', sa.String(32), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('key_hash', sa.String(64), unique=True, nullable=False, index=True),
         sa.Column('key_prefix', sa.String(12), server_default='ltm-sk-', nullable=False),
@@ -80,11 +80,11 @@ def upgrade() -> None:
     # ========== request_logs 表 ==========
     op.create_table(
         'request_logs',
-        sa.Column('id', sa.String(32), primary_key=True),
+        sa.Column('id', sa.String(36), primary_key=True),
         sa.Column('request_id', sa.String(64), unique=True, nullable=False, index=True),
-        sa.Column('user_id', sa.String(32), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True),
-        sa.Column('key_id', sa.String(32), sa.ForeignKey('user_api_keys.id', ondelete='SET NULL'), nullable=True, index=True),
-        sa.Column('provider_id', sa.String(32), sa.ForeignKey('providers.id', ondelete='SET NULL'), nullable=True),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True),
+        sa.Column('key_id', sa.String(36), sa.ForeignKey('user_api_keys.id', ondelete='SET NULL'), nullable=True, index=True),
+        sa.Column('provider_id', sa.String(36), sa.ForeignKey('providers.id', ondelete='SET NULL'), nullable=True),
         sa.Column('model', sa.String(100), nullable=False, index=True),
         sa.Column('prompt_tokens', sa.Integer(), server_default='0', nullable=False),
         sa.Column('completion_tokens', sa.Integer(), server_default='0', nullable=False),
@@ -103,8 +103,8 @@ def upgrade() -> None:
     # ========== monthly_usage 表 ==========
     op.create_table(
         'monthly_usage',
-        sa.Column('id', sa.String(32), primary_key=True),
-        sa.Column('user_id', sa.String(32), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('user_id', sa.String(36), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
         sa.Column('year_month', sa.String(7), nullable=False),
         sa.Column('total_tokens', sa.Integer(), server_default='0', nullable=False),
         sa.Column('total_cost_usd', sa.Numeric(10, 4), server_default='0', nullable=False),
@@ -117,8 +117,8 @@ def upgrade() -> None:
     # ========== model_pricing 表 ==========
     op.create_table(
         'model_pricing',
-        sa.Column('id', sa.String(32), primary_key=True),
-        sa.Column('provider_id', sa.String(32), sa.ForeignKey('providers.id', ondelete='CASCADE'), nullable=False, index=True),
+        sa.Column('id', sa.String(36), primary_key=True),
+        sa.Column('provider_id', sa.String(36), sa.ForeignKey('providers.id', ondelete='CASCADE'), nullable=False, index=True),
         sa.Column('model_name', sa.String(100), nullable=False, index=True),
         sa.Column('input_price_per_1k', sa.Numeric(10, 6), server_default='0', nullable=False),
         sa.Column('output_price_per_1k', sa.Numeric(10, 6), server_default='0', nullable=False),
