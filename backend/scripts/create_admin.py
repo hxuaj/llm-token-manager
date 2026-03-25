@@ -22,8 +22,11 @@ from models.user import User, UserRole
 from services.auth import hash_password
 
 
-async def create_admin(username: str, email: str, password: str):
+async def create_admin(username: str, email: str, password: str, real_name: str = ""):
     """创建新的管理员账号"""
+    if not real_name:
+        real_name = username
+
     async with async_session_maker() as session:
         # 检查用户名是否已存在
         result = await session.execute(
@@ -45,6 +48,7 @@ async def create_admin(username: str, email: str, password: str):
         admin = User(
             username=username,
             email=email,
+            real_name=real_name,
             password_hash=hash_password(password),
             role=UserRole.ADMIN,
             monthly_quota_usd=1000.00,  # 管理员给予较高额度
@@ -111,10 +115,11 @@ async def main():
         if choice == "1":
             username = input("用户名: ").strip()
             email = input("邮箱: ").strip()
+            real_name = input("真实姓名 (留空则使用用户名): ").strip()
             password = input("密码: ").strip()
 
             if username and email and password:
-                await create_admin(username, email, password)
+                await create_admin(username, email, password, real_name=real_name)
             else:
                 print("错误：所有字段都必须填写")
 
