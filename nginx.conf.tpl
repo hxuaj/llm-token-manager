@@ -71,6 +71,11 @@ server {
         }
     }
 
+    # /ltm 无尾斜杠重定向到 /ltm/
+    location = ${LTM_BASE_PATH} {
+        return 301 ${LTM_BASE_PATH}/;
+    }
+
     # 根路径重定向
     location = / {
         return 301 ${LTM_BASE_PATH}/;
